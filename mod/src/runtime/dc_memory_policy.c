@@ -3000,6 +3000,8 @@ static void hiprooms_save(void) {
     for (int i = 0; i < s_hiprooms_n; i++) fprintf(f, "%d\n", s_hiprooms[i]);
     fclose(f);
 }
+/* Load camera curves and hip offsets before play. */
+void dc_memory_preload(void) { dc_camtr_load(); hiprooms_load(); }
 int  dc_cam_hiproom_get(int room) { hiprooms_load(); for (int i = 0; i < s_hiprooms_n; i++) if (s_hiprooms[i] == room) return 1; return 0; }
 void dc_cam_hiproom_set(int room, int on) {
     hiprooms_load();

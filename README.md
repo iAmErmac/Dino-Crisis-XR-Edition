@@ -25,7 +25,7 @@ powershell -ExecutionPolicy Bypass -File installer\dcme-install.ps1 -DiscPath "D
 - Graphics improvements: shadows, ambient occlusion, anti-aliasing and more
 - Facial animation and lip sync
 - Widescreen 16:9, 21:9 and 32:9 without stretching, or the original 4:3
-- Render resolution up to 4K, 30 / 60 / 120 FPS
+- Render resolution up to 4K, 30 to 1000 FPS
 - Many quality-of-life options
 - Keyboard and mouse or a gamepad, every button can be remapped
 - Mod support: a mods folder the game picks up while running, and [Dino Crisis ME Studio](../../../Dino-Crisis-Studio) to export and replace characters, rooms, textures, sounds and videos
@@ -50,7 +50,7 @@ Your own Dino Crisis disc image (Track 1 `.bin` or `.cue`), one of:
 | Dino Crisis (Italy) PAL | SLES-02210 | + `.sbi` |
 | Dino Crisis (Spain) PAL | SLES-02211 | + `.sbi` |
 | Dino Crisis (Japan) | SLPS-02180 | |
-| Dino Crisis, Russian (VIT / Akella) | SLUS-00922 | the USA disc translated |
+| Dino Crisis, Russian translations | SLUS-00922 | the USA disc translated: VIT / Akella (also v2 and ViT v3), Vector, Golden Leon, Enterity, RGR Studio, Paradox |
 
 `.sbi` is the LibCrypt file of a PAL disc, next to the image (the same file DuckStation uses).
 
@@ -58,6 +58,7 @@ Windows 10 or 11, 64-bit, a graphics card with Vulkan.
 
 ## Known issues
 
+- Integrated graphics. At the first start the game turns its graphics down once (Anti-Aliasing, Materials, Shadows, Lamp Haze off). You can turn them back on in Modern Options > Graphics.
 - Windows 11 Smart App Control. If setup stops at "Recompiling the game to C", this Windows feature is probably on. It only lets through apps it already knows, and the game is built from your disc right on your PC, so to Windows it is a brand-new app. To install and play, set Smart App Control to Off (Windows Security > App & browser control > Smart App Control settings) and run setup again.
 
 ## Reporting a problem

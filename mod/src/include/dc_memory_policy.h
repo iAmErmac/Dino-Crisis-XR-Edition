@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 void dc_memory_policy_bind(void);
+void dc_memory_preload(void);
 uint32_t psx_ext_base(void);
 uint32_t psx_ext_size(void);
 const uint8_t *memory_mod_ptr(uint32_t phys, uint32_t width);

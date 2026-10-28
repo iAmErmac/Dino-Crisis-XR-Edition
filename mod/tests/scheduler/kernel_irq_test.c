@@ -36,6 +36,39 @@ static unsigned dispatch_count;
 static int scenario;
 static unsigned verifier_tail_hits, link_mutations, followup_callbacks;
 
+extern void (*g_psx_dead_loop_fn)(uint32_t);
+static unsigned dead_loop_hits;
+static uint32_t dead_loop_pc;
+static void note_dead_loop(uint32_t pc)
+{
+    ++dead_loop_hits;
+    dead_loop_pc = pc;
+}
+
+static void test_dead_loop_resume_pc(void)
+{
+    const uint32_t pc = 0x80018000u;
+    CPUState cpu = {0};
+    interrupts_init();
+    i_stat = i_mask = 0;
+    dead_loop_hits = 0;
+    g_psx_dead_loop_fn = note_dead_loop;
+    psx_write_word(pc, 0);
+    psx_write_word(pc + 4u, 0);
+    for (unsigned i = 0; i < 2050; ++i) psx_check_interrupts_at(&cpu, pc);
+    assert(dead_loop_hits == 0 && g_psx_dead_loop_fn);
+    interrupts_resync_after_restore();
+    psx_write_word(pc, 0x08000000u | ((pc >> 2) & 0x03FFFFFFu));
+    for (unsigned i = 0; i < 2050; ++i)
+        psx_check_interrupts_at(&cpu, pc + ((i & 1u) ? 8u : 0u));
+    assert(dead_loop_hits == 0);
+    interrupts_resync_after_restore();
+    for (unsigned i = 0; i < 2050; ++i) psx_check_interrupts_at(&cpu, pc);
+    assert(dead_loop_hits == 1 && dead_loop_pc == pc && !g_psx_dead_loop_fn);
+    for (unsigned i = 0; i < 2050; ++i) psx_check_interrupts_at(&cpu, pc);
+    assert(dead_loop_hits == 1);
+}
+
 static unsigned animation_returns;
 static unsigned sample_service_calls;
 
@@ -568,6 +601,7 @@ int main(void)
     for (int mode = 0; mode < 7; ++mode) run_case(mode);
     assert(deliveries == 7 && callbacks == 7);
 #endif
+    test_dead_loop_resume_pc();
     test_spu_sample_deadline_service();
     puts("PASS: kernel IRQ register restore and exception-time thread handoff");
     return 0;

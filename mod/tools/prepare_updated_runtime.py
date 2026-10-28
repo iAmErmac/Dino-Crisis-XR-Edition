@@ -268,6 +268,12 @@ def prepare(framework, output, frontend_base=None):
         affected.append("runtime/src/dc_frontend.cpp")
         patches.append(frontend_patch)
 
+    if frontend_base is not None:
+        product_update_patch = mod / "patches/dc-runtime-v105.dcpatch"
+        posdiff.apply(str(product_update_patch), str(output))
+        patches.append(product_update_patch)
+        affected.append("runtime/src/iso_reader_c.cpp")
+
     manifest = {
         "schema": 1,
         "framework_revision": REVISION,
