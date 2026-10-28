@@ -1,0 +1,24 @@
+# dcme-posdiff 2
+F runtime/src/iso_reader.cpp a00904f17541c5d943764ca1e92105359b7008aeb0dedd298c58980916ebea0d 1034
+@ 9 0
+~ =7,0,14 +bGliPgo=
++ I2luY2x1ZGUgPGNjdHlwZT4K
+@ 515 0
+~ =812,0,14 +ICpvcHRpb24gPSBzdGQ6OmdldGVudigiRENfU0JJIik7Cg==
+~ =128,0,8 +b3B0aW9uICYmIA== =128,8,12 +b3B0aW9uLCAiMA== =128,32,9 =60,8,13
+@ 517 1
+~ =68,0,15 +ZXhwbGljaXRfcGF0aCA9IG9wdGlvbiAmJiBvcHRpb25bMF0gJiYg =68,45,8 +Y21wKG9wdGlvbiwgIjEiKSAhPSAwOwo=
+~ =517,0,8 +ZXhwbGljaXRf =517,33,5 +IHsK
+~ +ICAgICAgICBwYXRoID0g =517,9,17 +dTg= =517,33,4 +KG9wdGlvbik7Cg==
+~ =348,0,13
+~ =938,0,20 +c3RlbQ== =938,29,9 +dGVtKCkuc3RyaW5nKCk7Cg==
+~ =912,0,20 +bG93ZXIgPSBzdGVtOwo=
+~ =913,0,23 +bG93 =913,31,12 +bG93 =913,51,10 +bG93 =913,69,12
+~ =908,7,43 +YXRpY19jYXN0PGNoYXI+KHN0ZDo6dG9sb3dlcihjKSk7IH0pOwo=
+~ +ICAgIA== =555,0,15 +dHJhY2sgPSBsb3dlci5yZmluZCgiICh0cmFjayAiKTsK
+~ +ICAgIA== =936,0,8 +dHJhY2s= =936,11,21 +ICYmICFsb3dlci5lbXB0eSgpICYmIGxvd2VyLmJhY2soKSA9PSAnKScpIHsK
+~ +ICAgIA== =208,0,13 +Y2FuZGlkYXRlID0gcGF0aC5wYXJlbnRfcGF0aCgpIC8gKA== =517,20,4 +LnN1YnN0cigwLA== =517,46,3 +YWNrKSArICIuc2JpIik7Cg==
+~ +ICAgICAgICA= =517,0,8 =517,9,24 +Y2FuZGlkYXRlKSkg =517,33,4 +ID0gY2FuZGlkYXQ= =517,50,3
+~ =145,0,10
+~ =42,0,6
+~ =517,0,47 +IWV4cGxpY2l0X3BhdGg7Cg==

@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
+option(DC_UPDATED_RUNTIME
+    "Use the prepared product runtime recipe"
+    OFF)
+if(DC_UPDATED_RUNTIME)
+    include("${CMAKE_CURRENT_LIST_DIR}/updated_runtime.cmake")
+    return()
+endif()
 project(DinoCrisis1Recomp C CXX)
 
 # MSVC defaults to C++14 (no std::filesystem); the framework's config_loader
@@ -14,6 +21,16 @@ if(NOT PSXRECOMP_ROOT)
     get_filename_component(PSXRECOMP_ROOT "${CMAKE_SOURCE_DIR}/../psxrecomp" ABSOLUTE)
 endif()
 set(PSXRECOMP_ROOT "${PSXRECOMP_ROOT}" CACHE PATH "Path to psxrecomp framework" FORCE)
+set(DC_EXECUTION_CORE_MANIFEST "${PSXRECOMP_ROOT}/dc_execution_core.json")
+if(EXISTS "${DC_EXECUTION_CORE_MANIFEST}")
+    message(FATAL_ERROR
+        "The prepared execution core requires -DDC_UPDATED_RUNTIME=ON")
+endif()
+option(DC_HOST_PROFILER "Build the optional host CPU sampler" OFF)
+option(PSX_GCP_PC_TRACK
+    "Compile opt-in last-noted guest-PC/source profiling hooks" OFF)
+set(DC_OVERLAY_STATIC_C "" CACHE FILEPATH
+    "Optional generated static-overlay dispatcher")
 
 # 17.09.2026 вечер: мод собирается БЕЗ отладочного сервера. Генератор Visual Studio многоконфигурационный, CMAKE_BUILD_TYPE
 # у него пуст, и runtime.cmake включал PSX_DEBUG_TOOLS по умолчанию: релиз слушал порт 127.0.0.1:4472 (чтение и запись
@@ -42,6 +59,38 @@ psxrecomp_add_runtime_target(DinoCrisisME
     DEBUG_PORT                4472
     DEFAULT_GAME_CONFIG_PATH  "game.toml"
 )
+if(DC_OVERLAY_STATIC_C)
+    if(NOT EXISTS "${DC_OVERLAY_STATIC_C}")
+        message(FATAL_ERROR
+            "DC_OVERLAY_STATIC_C does not exist: ${DC_OVERLAY_STATIC_C}")
+    endif()
+    get_filename_component(_overlay_static_dir "${DC_OVERLAY_STATIC_C}" DIRECTORY)
+    get_filename_component(_overlay_static_stem "${DC_OVERLAY_STATIC_C}" NAME_WE)
+    file(GLOB _overlay_static_units CONFIGURE_DEPENDS
+        "${_overlay_static_dir}/${_overlay_static_stem}_[0-9][0-9][0-9][0-9].c")
+    if(NOT _overlay_static_units)
+        message(FATAL_ERROR
+            "DC_OVERLAY_STATIC_C has no numbered generated units: ${DC_OVERLAY_STATIC_C}")
+    endif()
+    list(SORT _overlay_static_units)
+    target_sources(DinoCrisisME PRIVATE
+        "${DC_OVERLAY_STATIC_C}" ${_overlay_static_units})
+    target_compile_definitions(DinoCrisisME PRIVATE PSX_HAS_OVERLAY_DISPATCH=1)
+endif()
+if(PSX_GCP_PC_TRACK)
+    target_compile_definitions(DinoCrisisME PRIVATE PSX_GCP_PC_TRACK=1)
+endif()
+
+if(DC_HOST_PROFILER)
+    foreach(_profile_source IN ITEMS host_sampler.c dc_frontend.cpp)
+        set(_profile_path "${PSXRECOMP_ROOT}/runtime/src/${_profile_source}")
+        if(NOT EXISTS "${_profile_path}")
+            message(FATAL_ERROR "The selected runtime does not support DC_HOST_PROFILER")
+        endif()
+        set_property(SOURCE "${_profile_path}" APPEND PROPERTY
+            COMPILE_DEFINITIONS DC_HOST_PROFILER=1)
+    endforeach()
+endif()
 
 # Отладочный интерфейс (Dear ImGui: окно диагностики F2, подгонки F8, света F9)
 # из релиза убран целиком. Перекрестие на него больше не завязано — оно

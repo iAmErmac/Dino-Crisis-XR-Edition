@@ -1,0 +1,12 @@
+# dcme-posdiff 2
+F runtime/src/dc_gpu_sw_renderer.c e6d9e52f702a96603455af0fcb38dc4a3ad1d5a8f1513e338397ba6622ea3b9a 2902
+@ 11 1
+~ =11,0,10 +ZGNf =11,10,19
++ Cg==
+~ =102,11,22 +ID0gMA== =102,33,19 +ID0gMDsK
+F runtime/include/dc_gpu_sw_renderer.h 8c7db53da789d2a5e78b956818a29f9119922a93ce6021fed01bf949b0f57a4f 110
+@ 0 2
+~ =0,0,8 +REM= =0,11,19
+~ =1,0,8 +REM= =1,11,19
+@ 109 1
+~ =109,0,10 +REM= =109,13,22

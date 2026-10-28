@@ -1,0 +1,21 @@
+# dcme-posdiff 2
+F runtime/src/psx_selfcheck.c 712739c0b32429521abf36235d59c6fc0443b16ed089763fcdfe1124a29cd645 993
+@ 0 0
++ I2luY2x1ZGUgImNyYXNoX3RyYWNlLmgiCg==
+@ 350 0
++ I2lmZGVmIERDX1RDQl9DUFMK
+~ +ICAgIHBzeF9mYXRhbF9oYWx0KCJSb2xsYmFjaw== =1,22,12 +aXMgdW5hdmFpbGFibGUgaW4gdGhpcyBidWlsZCIpOwo=
++ ICAgIGFib3J0KCk7Cg==
++ I2VuZGlmCg==
+@ 518 1
++ I2lmbmRlZiBEQ19UQ0JfQ1BTCg==
+~ =518,0,39 +Cg==
+~ +Iw== =518,51,4 +Zgo=
+~ +ICAgICAgICAgICA= =518,39,22
+@ 803 0
++ I2lmZGVmIERDX1RDQl9DUFMK
+~ +ICAgIHBzeF9mYXRhbF9oYWx0KCJSb2xsYmFjaw== =1,22,12 +aXMgdW5hdmFpbGFibGUgaW4gdGhpcyBidWlsZCIpOwo=
++ ICAgIGFib3J0KCk7Cg==
++ I2Vsc2UK
+@ 805 0
++ I2VuZGlmCg==

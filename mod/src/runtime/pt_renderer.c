@@ -11,7 +11,11 @@
 #include <math.h>
 #include <windows.h>
 #include "pgxp.h"
+#if defined(DC_TCB_CPS)
+#include "dc_gpu_sw_renderer.h"
+#else
 #include "gpu_sw_renderer.h"
+#endif
 #include "cpu_state.h"
 /* 10.10.2026: объявления для бесплатного компилятора установщика (Clang): здесь вызывались функции без объявления
  * выше по файлу - MSVC подставлял int f() сам, Clang требует объявления. */

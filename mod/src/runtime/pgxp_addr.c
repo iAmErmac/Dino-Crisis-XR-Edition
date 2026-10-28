@@ -6,7 +6,12 @@
  * 32-bit word it was made for; every read compares that word with the real one, so a value the tracker did not
  * follow (arithmetic, untracked stores) only loses precision, it never moves a vertex.
  */
-#include "pgxp_addr.h"
+#include "pgxp_cells.h"
+#include "dc_pgxp.h"
+#ifdef DC_TCB_CPS
+#include "dc_projection_cache.h"
+#endif
+#include "dc_register_precision.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +30,7 @@ int       g_pgxp_rtp_vi = 0;
 #define PX_CELLS (PX_RAM_CELLS + PX_SPAD_CELLS + PX_ARENA_CELLS)
 
 static PxCell   s_fifo[3];            /* GTE SXY0 / SXY1 / SXY2 */
+static uint32_t s_register_generation = 1;
 static uint32_t s_reg_from[32];       /* address each register was last loaded from (VXY origin, debug) */
 static uint32_t s_vxy_from[3];        /* 12.09.2026: where VXY0/1/2 came from (lwc2 / mtc2 into data regs 0/2/4) */
 
@@ -50,10 +56,167 @@ void pgxp_addr_boot(void) {
 /* After a savestate load every cell belongs to the old timeline; one whose word happens to match the restored
  * RAM would give the renderer a wrong position. Start empty - the next frame of projections fills them again. */
 void pgxp_addr_reset(void) {
+    if (++s_register_generation == 0) s_register_generation = 1;
     if (!g_pgxp_addr_on) return;
     memset(g_px_live, 0, ((PX_CELLS + 31) / 32) * sizeof(uint32_t));
     memset(g_px_reg, 0, sizeof g_px_reg);
     memset(s_fifo, 0, sizeof s_fifo);
+    memset(s_reg_from, 0, sizeof s_reg_from);
+    memset(s_vxy_from, 0, sizeof s_vxy_from);
+}
+
+void dc_pgxp_capture_registers(const uint32_t words[34], DcAddressPrecision *state)
+{
+    memset(state, 0, sizeof *state);
+    state->generation = s_register_generation;
+    if (!g_pgxp_addr_on) return;
+    for (unsigned i = 1; i < 32; ++i) {
+        state->value[i] = words[i];
+        state->source[i] = s_reg_from[i];
+        if (g_px_reg[i].raw == words[i]) state->reg[i] = g_px_reg[i];
+    }
+}
+
+void dc_pgxp_restore_registers(const uint32_t words[34], const DcAddressPrecision *state)
+{
+    memset(g_px_reg, 0, sizeof g_px_reg);
+    memset(s_reg_from, 0, sizeof s_reg_from);
+    if (!g_pgxp_addr_on || state->generation != s_register_generation) return;
+    for (unsigned i = 1; i < 32; ++i) {
+        if (state->value[i] != words[i]) continue;
+        s_reg_from[i] = state->source[i];
+        if (state->reg[i].raw == words[i]) g_px_reg[i] = state->reg[i];
+    }
+}
+
+void dc_pgxp_forget_register(uint32_t reg)
+{
+    if (reg >= 32) return;
+    memset(&g_px_reg[reg], 0, sizeof g_px_reg[reg]);
+    s_reg_from[reg] = 0;
+}
+
+void dc_pgxp_project_float(int vertex, float x, float y, float depth, uint32_t packed, int valid)
+{
+    int previous = g_pgxp_rtp_vi;
+    g_pgxp_rtp_vi = vertex;
+#ifdef DC_TCB_CPS
+    if (valid) dc_projection_cache_put((int16_t)packed, (int16_t)(packed >> 16), x, y, depth);
+#endif
+    pgxp_addr_rtps_push(x, y, depth, packed, valid);
+    g_pgxp_rtp_vi = previous;
+}
+
+void dc_pgxp_project(int vertex, int32_t x16, int32_t y16,
+                     uint32_t depth, uint32_t packed, int valid)
+{
+#ifdef DC_TCB_CPS
+    if (valid) dc_projection_cache_put((int16_t)packed, (int16_t)(packed >> 16),
+        (float)x16 / 65536.0f, (float)y16 / 65536.0f, (float)depth);
+#endif
+    int previous = g_pgxp_rtp_vi;
+    g_pgxp_rtp_vi = vertex;
+    pgxp_addr_rtps_push((float)x16 / 65536.0f, (float)y16 / 65536.0f,
+                       (float)depth, packed, valid);
+    g_pgxp_rtp_vi = previous;
+}
+
+void dc_pgxp_load(uint32_t instruction, uint32_t address, uint32_t value)
+{
+    if (!g_pgxp_addr_on) return;
+    unsigned op = instruction >> 26, rt = (instruction >> 16) & 31;
+    dc_pgxp_forget_register(rt);
+    if (rt == 0) return;
+    g_px_reg[rt].raw = value;
+    if (op == 0x23) {
+        s_reg_from[rt] = address;
+        if (px_is_live(address)) px_load_word_to_reg(address, (int)rt, value);
+        else if (((address & 0x1FFFFFFu) - 0xC6800u) < 0x2000u) {
+            g_px_reg[rt].bits = PX_ACTOR;
+            g_px_reg[rt].raw = value;
+        }
+    } else if ((op == 0x21 || op == 0x25) && px_is_live(address)) {
+        px_load_half_to_reg(address, (int)rt, value, op == 0x21);
+    }
+}
+
+void dc_pgxp_store(uint32_t instruction, uint32_t address, uint32_t value)
+{
+    if (!g_pgxp_addr_on) return;
+    unsigned op = instruction >> 26, rt = (instruction >> 16) & 31;
+    if (op == 0x29) {
+        pgxp_addr_inval_half(address, (uint16_t)value);
+        if (rt && px_reg_holds((int)rt, value))
+            px_store_half_from_reg(address, (int)rt, value);
+        return;
+    }
+    pgxp_addr_inval_word(address);
+    if (op != 0x2B) return;
+    if (rt && px_reg_holds((int)rt, value)) {
+        px_store_word_from_reg(address, (int)rt);
+    } else if (g_px_reseed && ((address & 0x1FFFFFFu) - 0x150000u) < 0x80000u && value) {
+        int x = (int16_t)value, y = (int16_t)(value >> 16);
+        if (x > -1024 && x < 1024 && y > -512 && y < 512)
+            px_rebuild_from_cache(address, value);
+    }
+}
+
+void dc_pgxp_alu(uint32_t instruction, uint32_t result)
+{
+    if (!g_pgxp_addr_on) return;
+    unsigned op = instruction >> 26, rs = (instruction >> 21) & 31;
+    unsigned rt = (instruction >> 16) & 31, rd = (instruction >> 11) & 31;
+    unsigned dest, source = 0;
+    if (op == 0) {
+        unsigned fn = instruction & 63;
+        if (fn == 0x11 || fn == 0x13 || (fn >= 0x18 && fn <= 0x1B)) return;
+        if (fn == 8 || fn == 9 || fn == 0x0C || fn == 0x0D) return;
+        dest = rd;
+        if ((fn == 0x21 || fn == 0x25) && (rs == 0 || rt == 0)) source = rs ? rs : rt;
+        else if (fn == 0 && ((instruction >> 6) & 31) == 0) source = rt;
+    } else if (op >= 8 && op <= 15) {
+        dest = rt;
+        if ((op == 9 || op == 0x0D) && (instruction & 0xFFFF) == 0) source = rs;
+    } else if (op == 0x10 && rs == 0) dest = rt;
+    else return;
+    if (dest == 0) { dc_pgxp_forget_register(0); return; }
+    if (source && g_px_reg[source].raw == result) {
+        g_px_reg[dest] = g_px_reg[source];
+        s_reg_from[dest] = s_reg_from[source];
+    } else dc_pgxp_forget_register(dest);
+}
+
+void dc_pgxp_cop2(uint32_t instruction, uint32_t value, uint32_t address)
+{
+    if (!g_pgxp_addr_on) return;
+    unsigned op = instruction >> 26, rt = (instruction >> 16) & 31;
+    unsigned reg = (instruction >> 11) & 31, transfer = (instruction >> 21) & 31;
+    if (op == 0x32) {
+        if (rt == 15) {
+            s_fifo[0] = s_fifo[1];
+            s_fifo[1] = s_fifo[2];
+            rt = 14;
+        }
+        px_mem_to_gte(address, (int)rt, value);
+        return;
+    }
+    if (op == 0x3A) {
+        pgxp_addr_inval_word(address);
+        px_gte_to_mem(address, rt == 15 ? 14 : (int)rt, value);
+        return;
+    }
+    if (op != 0x12) return;
+    if (transfer == 0 || transfer == 2) {
+        dc_pgxp_forget_register(rt);
+        if (transfer == 0) px_gte_to_reg((int)rt, reg == 15 ? 14 : (int)reg, value);
+    } else if (transfer == 4) {
+        if (reg == 15) {
+            s_fifo[0] = s_fifo[1];
+            s_fifo[1] = s_fifo[2];
+            reg = 14;
+        }
+        px_reg_to_gte((int)reg, (int)rt, value);
+    }
 }
 
 /* ---- memory cells ------------------------------------------------------------------------------------------ */
@@ -411,11 +574,17 @@ int pgxp_addr_get_vertex(uint32_t addr, uint32_t value, float* fx, float* fy, fl
 }
 
 /* Display-list word rebuilt from the value-keyed GTE cache (pgxp_sw_v). */
+#ifndef DC_TCB_CPS
 extern int pgxp_lookup(int sx, int sy, float* fx, float* fy, float* w);
+#endif
 
 void px_rebuild_from_cache(uint32_t addr, uint32_t v) {
     float fx, fy, w;
+#ifdef DC_TCB_CPS
+    if (!dc_projection_cache_get((int16_t)v, (int16_t)(v >> 16), &fx, &fy, &w)) return;
+#else
     if (!pgxp_lookup((int16_t)v, (int16_t)(v >> 16), &fx, &fy, &w)) return;
+#endif
     PxCell c;
     c.x = fx; c.y = fy; c.z = w;
     c.raw = v;

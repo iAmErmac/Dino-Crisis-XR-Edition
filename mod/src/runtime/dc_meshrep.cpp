@@ -42,7 +42,12 @@
 #include <vector>
 
 #include "cpu_state.h"
+#if defined(DC_TCB_CPS)
+#include "dc_gpu_sw_renderer.h"
+#else
 #include "gpu_sw_renderer.h"
+#endif
+#include "dc_renderer.h"
 #include "ufbx.h"
 
 extern "C" {
@@ -2266,6 +2271,23 @@ extern "C" int dc_meshrep_attach(CPUState* cpu, uint32_t hdr, uint32_t node, uin
 // в t9 (его продолжает следующий вызов, func_80075094 возвращает его в 0x1F800004), список и его сдвиг - t8 и s4 (только чтение).
 // Зовём их на кусках подряд идущих записей без кисти - то же, что сделала бы игра, минус эти полигоны. Регистры выложены
 // хуком (PSX_SPILL до, PSX_RELOAD после).
+#include "dc_mesh_runs.h"
+extern "C" void psx_fatal_halt(const char *reason);
+extern "C" void dc_meshrep_attach_runs(uint32_t hdr, DcMeshRuns *runs)
+{
+    const uint8_t *ram = memory_get_ram_ptr();
+    const uint32_t h = hdr & 0x1FFFFFu;
+    if (!ram || h < 0x10000u || h + 12u > 0x200000u) {
+        psx_fatal_halt("attachment: invalid mesh header");
+        abort();
+    }
+    const HandCut *cut = s_cut_last && s_cut_hdr == h ? s_cut_last : nullptr;
+    runs->base[0] = rd32(ram + h); runs->base[1] = rd32(ram + h + 4);
+    runs->count[0] = rd16(ram + h + 8); runs->count[1] = rd16(ram + h + 10);
+    runs->cut[0] = cut ? cut->tri : 0; runs->cut[1] = cut ? cut->quad : 0;
+    s_cut_last = nullptr;
+}
+#ifndef DC_TCB_CPS
 extern "C" void func_80075484(CPUState* cpu);
 extern "C" void func_8007511C(CPUState* cpu);
 extern "C" void dc_meshrep_attach_draw(CPUState* cpu, uint32_t hdr) {
@@ -2291,6 +2313,8 @@ extern "C" void dc_meshrep_attach_draw(CPUState* cpu, uint32_t hdr) {
     runs(tri, nt, 48u, hc ? hc->tri : 0, func_80075484, 0x800750E4u);
     runs(quad, nq, 64u, hc ? hc->quad : 0, func_8007511C, 0x800750F4u);
 }
+
+#endif
 
 // очистка списка игры (DMA 6): новая сборка — прежние снимки этого списка больше не нужны
 extern "C" void dc_meshrep_otc(uint32_t madr) {

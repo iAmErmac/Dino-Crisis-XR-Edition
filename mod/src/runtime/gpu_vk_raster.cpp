@@ -8960,7 +8960,42 @@ extern "C" void dcvk_flicker_replay(void) {
  * disputes (wall signs, laser beams) instead of guessing from screenshots. */
 extern "C" volatile int  g_dcvk_primdump = 0;
 extern "C" char          g_dcvk_primdump_path[260] = { 0 };
+extern "C" uint64_t s_frame_count;
 static void dcvk_primdump_write(int drawFrom) {
+    struct Window { unsigned long long first; unsigned count, stride; };
+    static const Window window = [] {
+        Window result = {};
+        const char* from = getenv("DC_PRIMDUMP_FROM_FRAME");
+        const char* count = getenv("DC_PRIMDUMP_FRAMES");
+        const char* stride = getenv("DC_PRIMDUMP_STRIDE");
+        if (!from || !count) return result;
+        char *end = nullptr;
+        result.first = strtoull(from, &end, 10);
+        if (!*from || *from == '-' || *end || result.first > 0xFFFFFFFFull) return Window{};
+        unsigned long n = strtoul(count, &end, 10);
+        if (!*count || *count == '-' || *end || n < 1 || n > 240) return Window{};
+        result.count = (unsigned)n;
+        result.stride = 1;
+        if (stride) {
+            unsigned long s = strtoul(stride, &end, 10);
+            if (!*stride || *stride == '-' || *end || s < 1 || s > 60) return Window{};
+            result.stride = (unsigned)s;
+        }
+        return result;
+    }();
+    if (window.count && !g_dcvk_primdump) {
+        static unsigned long long previous = ~0ull;
+        const unsigned long long frame = s_frame_count;
+        if (frame >= window.first) {
+            const unsigned long long bucket = (frame - window.first) / window.stride;
+            if (bucket < window.count && bucket != previous) {
+                previous = bucket;
+                snprintf(g_dcvk_primdump_path, sizeof g_dcvk_primdump_path,
+                         "prims_frame_%llu.csv", frame);
+                g_dcvk_primdump = 1;
+            }
+        }
+    }
     /* BURST MODE (2026-08-31, sub-pixel shimmer forensics): touching
      * primburst.on next to the exe arms a CSV dump of the next 20 RENDERS
      * back to back - strictly one per rendered frame, no sampling alias.
@@ -8989,8 +9024,8 @@ static void dcvk_primdump_write(int drawFrom) {
         const Draw& d = s_draws[di];
         for (int t = 0; t < d.count; t++) {
             const float* v = s_vmap + (size_t)(d.first + t) * VERT_FLOATS;
-            fprintf(f, "%zu,%d,%d,%d,%d,%d,%.2f,%.2f,%.1f,%.1f,%.0f,%.0f,%.0f,"
-                       "%.0f,%.0f,%.0f,%.0f,%.0f,%.4f\n",
+            fprintf(f, "%zu,%d,%d,%d,%d,%d,%.9g,%.9g,%.1f,%.1f,%.0f,%.0f,%.0f,"
+                       "%.0f,%.0f,%.0f,%.0f,%.0f,%.9g\n",
                     di, d.kind, d.pass, d.room, d.wire, t,
                     v[0], v[1], v[2], v[3], v[4], v[5], v[6],
                     v[7], v[8], v[9], v[10], v[11], v[12]);

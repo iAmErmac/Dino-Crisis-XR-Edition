@@ -20,6 +20,8 @@
 #include <string.h>
 #include <stdint.h>
 #include "cpu_state.h"
+#include "dc_draw_pose.h"
+#include "dc_guest_registers.h"
 /* dc_embedded.c: our own data, built into the program */
 const unsigned char *dc_embedded(const char *name, unsigned *size);
 /* 10.10.2026: объявления для бесплатного компилятора установщика (Clang): здесь вызывались функции без объявления
@@ -1123,26 +1125,45 @@ static void ao_enter(CPUState *cpu, int gate_actor);
  * как делает сам обработчик полёта. Регистры сохраняются/восстанавливаются целиком. */
 static struct { int pending; uint32_t obj; int16_t pos[3]; } s_gl_call;
 void dc_grenade_defer_explode(uint32_t obj, const int16_t pos[3]) { s_gl_call.obj = obj & 0x1FFFFFu; s_gl_call.pos[0] = pos[0]; s_gl_call.pos[1] = pos[1]; s_gl_call.pos[2] = pos[2]; s_gl_call.pending = 1; }
+extern void psx_fatal_halt(const char *reason);
+static int gl_log_enabled(void) { static int on = -1; if (on < 0) { const char *e = getenv("DC_GRENADE_LOG"); on = e && *e == '1'; } return on; }
+uint32_t dc_grenade_take(void) {
+    { extern int g_savestate_loads; static int loaded;
+      if (loaded != g_savestate_loads) { loaded = g_savestate_loads; s_gl_call.pending = 0; } }
+    if (!s_gl_call.pending) return 0;
+    s_gl_call.pending = 0;
+    uint8_t *ram = memory_get_ram_ptr(); if (!ram) return 0;
+    uint32_t o = s_gl_call.obj;
+    if (!o || o + 61u > 0x200000u) { psx_fatal_halt("grenade: invalid object"); abort(); }
+    static int st2 = -1;
+    if (st2 < 0) { const char *e = getenv("DC_GRENADE_ST2"); st2 = !(e && *e == '0'); }
+    if (ram[o + 39] != 12 || ram[o + 60] > (st2 ? 2 : 1)) {
+        if (gl_log_enabled()) fprintf(stderr, "grenade: deferred explode skipped (cls %d st %d)\n", ram[o + 39], ram[o + 60]);
+        return 0;
+    }
+    for (int i = 0; i < 3; ++i) {
+        ram[o + 32 + 2*i] = (uint8_t)s_gl_call.pos[i]; ram[o + 33 + 2*i] = (uint8_t)(s_gl_call.pos[i] >> 8);
+    }
+    return o;
+}
+void dc_grenade_complete(uint32_t o) {
+    uint8_t *ram = memory_get_ram_ptr();
+    if (!ram || !o || o + 61u > 0x200000u) { psx_fatal_halt("grenade: invalid completion object"); abort(); }
+    ram[o + 60] = 3;
+    if (gl_log_enabled()) fprintf(stderr, "grenade: deferred explode completed\n");
+}
+#ifndef DC_TCB_CPS
 extern void func_80046330(CPUState *cpu);
 static void gl_run_deferred(CPUState *cpu) {
-    { extern int g_savestate_loads; static int ld = 0;   /* 18.10: отложенный взрыв прежнего мира после быстрой загрузки - */
-      if (ld != g_savestate_loads) { ld = g_savestate_loads; s_gl_call.pending = 0; } }   /* не трогать гранату сейва */
-    if (!s_gl_call.pending) return;
-    s_gl_call.pending = 0;
-    uint8_t *ram = memory_get_ram_ptr(); if (!ram) return;
-    uint32_t o = s_gl_call.obj;
-    /* 25.09: и в баллистическом полёте (состояние 2 — без цели игра пускает гранату сразу так); DC_GRENADE_ST2=0 — как было */
-    static int st2 = -1;
-    if (st2 < 0) { const char *e2 = getenv("DC_GRENADE_ST2"); st2 = (e2 && *e2 == '0') ? 0 : 1; }
-    if (ram[o + 39] != 12 || ram[o + 60] > (st2 ? 2 : 1)) { fprintf(stderr, "grenade: deferred explode skipped (cls %d st %d)\n", ram[o + 39], ram[o + 60]); return; }
-    for (int i = 0; i < 3; i++) { ram[o + 32 + 2*i] = (uint8_t)s_gl_call.pos[i]; ram[o + 33 + 2*i] = (uint8_t)(s_gl_call.pos[i] >> 8); }
+    uint32_t o = dc_grenade_take(); if (!o) return;
     uint32_t save[32]; memcpy(save, cpu->gpr, sizeof save); uint32_t hi = cpu->hi, lo = cpu->lo;
     cpu->gpr[4] = 0x80000000u | o; cpu->gpr[5] = 1; cpu->gpr[6] = 1; cpu->gpr[31] = 0x80072C84u;
     func_80046330(cpu);
     memcpy(cpu->gpr, save, sizeof save); cpu->hi = hi; cpu->lo = lo;
-    ram[o + 60] = 3;
-    { static long n = 0; if (++n <= 40) fprintf(stderr, "grenade: deferred explode at %d,%d,%d done\n", s_gl_call.pos[0], s_gl_call.pos[1], s_gl_call.pos[2]); }
+    dc_grenade_complete(o);
 }
+#endif
+
 /* (07.09) последняя распаковка кадра оружейного блока: индекс моушена (по таблице набора) и кадр */
 static int ao_last_motion(int *m_out, int *k_out) {
     uint32_t src = 0;
@@ -1182,7 +1203,12 @@ static void head_free_tick(uint8_t *ram) {
     if (n < 20) { n++; fprintf(stderr, "headfree: Regina's head stayed on the head controller (auto look) while the animation drives it - "
                                        "built in the animation's order again (DC_HEAD_FREE=0 off)%c", 10); }
 }
-void pt_anim_aimoff_draw_enter(CPUState *cpu) { gl_run_deferred(cpu); head_free_tick(memory_get_ram_ptr()); ao_enter(cpu, 0); }
+void pt_anim_aimoff_draw_enter(CPUState *cpu) {
+#ifndef DC_TCB_CPS
+    gl_run_deferred(cpu);
+#endif
+    head_free_tick(memory_get_ram_ptr()); ao_enter(cpu, 0);
+}
 void pt_anim_aimoff_enter(CPUState *cpu) { ao_enter(cpu, 1); }
 /* 12.10.2026 поздно, РЕЖИМ 3 заново (игрок: «то же самое, что в режиме 0; только когда жмёшь направление и она
  * поворачивается, уже в повороте принимает позу приготовления к стрельбе - верх тела как на ходу. Сейчас слайдится назад при
@@ -1640,17 +1666,12 @@ static int lad_shift_up_cfg(void) { static int d = -99999; if (d == -99999) { co
 static int16_t lad_s16(const uint8_t *ram, uint32_t a) { return (int16_t)(ram[a] | (ram[a + 1] << 8)); }
 static uint32_t lad_u32(const uint8_t *ram, uint32_t a) { return (uint32_t)ram[a] | ((uint32_t)ram[a + 1] << 8) | ((uint32_t)ram[a + 2] << 16) | ((uint32_t)ram[a + 3] << 24); }
 static uint32_t s_lad_key = 0; static int s_lad_is = 0, s_lad_endfloor = 0, s_lad_up = 0;
-static int s_lad_applied = 0; static int16_t s_lad_saved[3], s_lad_wrote[3];
 /* ===== ХОДЬБА В ПРИЦЕЛЕ, режим «СТРЕЙФ»: ОТРИСОВКА (12.10.2026, main.cpp dc_aim_walk_mode = 1) ===========================
  * Логика ведёт её по направлению шага (курс = направление, походка с оружием - коллизия и скорость игры), а рисуем лицом к
  * перекрестию: на входе func_80073F10 (она сцепляет узлы от матрицы актёра 0x800B928C) поворот матрицы актёра R' = R*Ry(δ),
  * δ = курс прицела - курс логики; на выходе - вернуть. Ноги - sl_legs. Углы в RAM не трогаем - логика (func_80066260) строит
  * свои матрицы заново. DC_STRAFE_SIGN=-1 - если поворот окажется не в ту сторону. */
-static struct { int aim_q, legs_q; uint32_t frame; int applied; int16_t saved[9], wrote[9];
-                int papplied; int16_t psaved[9], pwrote[9];
-                int gapplied; int16_t gsaved[2][3][16], gwrote[2][3][16];
-                int rapplied; int16_t rsaved[3], rwrote[3];
-                int t0applied; int16_t t0saved[16], t0wrote[16]; int lf_q; } s_sf;
+static struct { int aim_q, legs_q; uint32_t frame; int lf_q; DcDrawPose pose; } s_sf;
 /* 12.10 (вечер, игрок: «на один-два кадра моделька поворачивается в противоположную сторону»): main.cpp отдаёт АБСОЛЮТНЫЙ курс
  * прицела, а не разницу: матрица актёра в кадре смены курса бывает ещё прошлой (её строит игра по курсу не в каждом кадре до
  * отрисовки), и поворот «на разницу» от неё давал разворот на 90° в другую сторону. Теперь курс матрицы меряется по ней самой.
@@ -2196,24 +2217,24 @@ static void sl_live_pose(const uint8_t *ram, float *o) {       /* как её п
 }
 static void sl_apply(uint8_t *ram, const float *p) {
     int16_t *rp = (int16_t *)(ram + LAD_NODE0 + 68u);
-    for (int k = 0; k < 3; k++) s_sf.rsaved[k] = rp[k];
+    for (int k = 0; k < 3; k++) s_sf.pose.rsaved[k] = rp[k];
     for (int k = 0; k < 3; k++) rp[k] = (int16_t)lroundf(p[k]);
-    for (int k = 0; k < 3; k++) s_sf.rwrote[k] = rp[k];
-    s_sf.rapplied = 1;
+    for (int k = 0; k < 3; k++) s_sf.pose.rwrote[k] = rp[k];
+    s_sf.pose.rapplied = 1;
     float L0[9], L0T[9], W8[9], L8[9];
     sf_load((const int16_t *)(ram + AP_NODES), L0);
     for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) L0T[r*3+c] = L0[c*3+r];
     ao_euler((int)lroundf(p[3]) & 4095, (int)lroundf(p[4]) & 4095, (int)lroundf(p[5]) & 4095, W8); ao_mul(L0T, W8, L8);
     int16_t *P8 = (int16_t *)(ram + AP_NODES + AP_NODE_STRIDE * 8u);
-    memcpy(s_sf.psaved, P8, sizeof s_sf.psaved); sf_store(L8, P8); memcpy(s_sf.pwrote, P8, sizeof s_sf.pwrote); s_sf.papplied = 1;
+    memcpy(s_sf.pose.psaved, P8, sizeof s_sf.pose.psaved); sf_store(L8, P8); memcpy(s_sf.pose.pwrote, P8, sizeof s_sf.pose.pwrote); s_sf.pose.papplied = 1;
     for (int i = 0; i < 2; i++) for (int j = 0; j < 3; j++) {
         int16_t *Ln = (int16_t *)(ram + AP_NODES + AP_NODE_STRIDE * (uint32_t)(9 + 3 * i + j));
-        memcpy(s_sf.gsaved[i][j], Ln, sizeof s_sf.gsaved[i][j]);
+        memcpy(s_sf.pose.gsaved[i][j], Ln, sizeof s_sf.pose.gsaved[i][j]);
         float L[9]; const float *a = p + 6 + (i * 3 + j) * 3;
         ao_euler((int)lroundf(a[0]) & 4095, (int)lroundf(a[1]) & 4095, (int)lroundf(a[2]) & 4095, L); sf_store(L, Ln);
-        memcpy(s_sf.gwrote[i][j], Ln, sizeof s_sf.gwrote[i][j]);
+        memcpy(s_sf.pose.gwrote[i][j], Ln, sizeof s_sf.pose.gwrote[i][j]);
     }
-    s_sf.gapplied = 1;
+    s_sf.pose.gapplied = 1;
 }
 /* СКОРОСТЬ - ИГРЕ ДО ШАГА (12.10 поздно, рывки в сессии игрока 21:37): поправка шага на отрисовке шла ПОСЛЕ камеры, камера
  * видела шаг игры, а Регина стояла по-нашему - на нажатии/отпускании она прыгала в кадре на 4-10°, на развороте камера уезжала
@@ -2553,7 +2574,7 @@ static void sl_legs(uint8_t *ram, int fresh) {
             int T0[3]; for (int c = 0; c < 3; c++) T0[c] = (int)lroundf((float)ql[c] + sl_wq(s_sl.t0m[c] - (float)ql[c]) * wsc) & 4095;
             float Ln[9]; ao_euler(T0[0], T0[1], T0[2], Ln);
             int16_t *N0 = (int16_t *)(ram + AP_NODES);
-            memcpy(s_sf.t0saved, N0, sizeof s_sf.t0saved); sf_store(Ln, N0); memcpy(s_sf.t0wrote, N0, sizeof s_sf.t0wrote); s_sf.t0applied = 1;
+            memcpy(s_sf.pose.t0saved, N0, sizeof s_sf.pose.t0saved); sf_store(Ln, N0); memcpy(s_sf.pose.t0wrote, N0, sizeof s_sf.pose.t0wrote); s_sf.pose.t0applied = 1;
         }
     }
     /* 13.10 поздний вечер (игрок: «откати правку по ногам, двигаться как до неё - плавно; но таз с ногами не должен делать полный
@@ -2613,7 +2634,7 @@ static void sl_legs(uint8_t *ram, int fresh) {
 }
 static void strafe_draw_enter(void) {
     extern uint64_t s_frame_count;
-    s_sf.applied = 0; s_sf.papplied = 0; s_sf.gapplied = 0; s_sf.rapplied = 0; s_sf.t0applied = 0;
+    s_sf.pose.applied = 0; s_sf.pose.papplied = 0; s_sf.pose.gapplied = 0; s_sf.pose.rapplied = 0; s_sf.pose.t0applied = 0;
     { static int dbg = -1;                                                     /* DC_STRAFE_DBG=1: курс каждой отрисовки в прицеле */
       if (dbg < 0) { const char *e = getenv("DC_STRAFE_DBG"); dbg = (e && (*e == '1' || *e == '2')) ? 1 : 0; }
       uint8_t *rd = memory_get_ram_ptr();
@@ -2645,8 +2666,8 @@ static void strafe_draw_enter(void) {
     const int dqs = fresh ? (int)lroundf(sgn * (float)(((s_sf.aim_q - ry + 2048) & 4095) - 2048)) : 0;
     if (dqs != 0) {
         ao_euler(0, dqs, 0, Ry); ao_mul(R, Ry, Rn);
-        memcpy(s_sf.saved, M, sizeof s_sf.saved); sf_store(Rn, M); memcpy(s_sf.wrote, M, sizeof s_sf.wrote);
-        s_sf.applied = 1;
+        memcpy(s_sf.pose.saved, M, sizeof s_sf.pose.saved); sf_store(Rn, M); memcpy(s_sf.pose.wrote, M, sizeof s_sf.pose.wrote);
+        s_sf.pose.applied = 1;
     }
     { static int dbg2 = -1; if (dbg2 < 0) { const char *e = getenv("DC_STRAFE_DBG"); dbg2 = (e && (*e == '1' || *e == '2')) ? 1 : 0; }
       if (dbg2) fprintf(stderr, "strafedbg:   drawn matyaw=%d (turned %d) legs %d%c", (int)lroundf(atan2f((float)M[2], (float)M[0]) / AO_ANG) & 4095,
@@ -2654,35 +2675,35 @@ static void strafe_draw_enter(void) {
     sl_legs(ram, fresh);                                                    /* ноги - из набора стрейфов игрока */
 }
 static void strafe_draw_exit(void) {
-    uint8_t *ram = memory_get_ram_ptr(); if (!ram) { s_sf.applied = s_sf.papplied = s_sf.gapplied = s_sf.rapplied = 0; return; }
-    if (s_sf.rapplied) {                                                       /* качание таза - вернуть смещение корня */
-        s_sf.rapplied = 0;
+    uint8_t *ram = memory_get_ram_ptr(); if (!ram) { s_sf.pose.applied = s_sf.pose.papplied = s_sf.pose.gapplied = s_sf.pose.rapplied = 0; return; }
+    if (s_sf.pose.rapplied) {                                                       /* качание таза - вернуть смещение корня */
+        s_sf.pose.rapplied = 0;
         int16_t *rp = (int16_t *)(ram + LAD_NODE0 + 68u);
-        if (rp[0] == s_sf.rwrote[0] && rp[1] == s_sf.rwrote[1] && rp[2] == s_sf.rwrote[2]) for (int k = 0; k < 3; k++) rp[k] = s_sf.rsaved[k];
+        if (rp[0] == s_sf.pose.rwrote[0] && rp[1] == s_sf.pose.rwrote[1] && rp[2] == s_sf.pose.rwrote[2]) for (int k = 0; k < 3; k++) rp[k] = s_sf.pose.rsaved[k];
     }
     if (ram[0xB92C8] == 1 && ram[0xB92C9] == 6 && (lad_u32(ram, LAD_NODE0 + 56u) & 0x1FFFFFu) == 0xB928Cu) gait_offsets_capture(ram);
-    if (s_sf.t0applied) {                                                      /* корпус (узел 0) - как его построила игра */
-        s_sf.t0applied = 0;
+    if (s_sf.pose.t0applied) {                                                      /* корпус (узел 0) - как его построила игра */
+        s_sf.pose.t0applied = 0;
         int16_t *N0 = (int16_t *)(ram + AP_NODES);
-        if (!memcmp(N0, s_sf.t0wrote, sizeof s_sf.t0wrote)) memcpy(N0, s_sf.t0saved, sizeof s_sf.t0saved);
+        if (!memcmp(N0, s_sf.pose.t0wrote, sizeof s_sf.pose.t0wrote)) memcpy(N0, s_sf.pose.t0saved, sizeof s_sf.pose.t0saved);
     }
-    if (s_sf.gapplied) {                                                       /* ноги шага вбок - как их построила игра */
-        s_sf.gapplied = 0;
+    if (s_sf.pose.gapplied) {                                                       /* ноги шага вбок - как их построила игра */
+        s_sf.pose.gapplied = 0;
         static const int legs[2] = { 9, 12 };
         for (int i = 0; i < 2; i++) for (int j = 0; j < 3; j++) {
             int16_t *Ln = (int16_t *)(ram + AP_NODES + AP_NODE_STRIDE * (uint32_t)(legs[i] + j));
-            if (!memcmp(Ln, s_sf.gwrote[i][j], sizeof s_sf.gwrote[i][j])) memcpy(Ln, s_sf.gsaved[i][j], sizeof s_sf.gsaved[i][j]);
+            if (!memcmp(Ln, s_sf.pose.gwrote[i][j], sizeof s_sf.pose.gwrote[i][j])) memcpy(Ln, s_sf.pose.gsaved[i][j], sizeof s_sf.pose.gsaved[i][j]);
         }
     }
-    if (s_sf.papplied) {                                                       /* таз - вернуть локальную матрицу, как её построила игра */
-        s_sf.papplied = 0;
+    if (s_sf.pose.papplied) {                                                       /* таз - вернуть локальную матрицу, как её построила игра */
+        s_sf.pose.papplied = 0;
         int16_t *P8 = (int16_t *)(ram + AP_NODES + AP_NODE_STRIDE * 8u);
-        if (!memcmp(P8, s_sf.pwrote, sizeof s_sf.pwrote)) memcpy(P8, s_sf.psaved, sizeof s_sf.psaved);
+        if (!memcmp(P8, s_sf.pose.pwrote, sizeof s_sf.pose.pwrote)) memcpy(P8, s_sf.pose.psaved, sizeof s_sf.pose.psaved);
     }
-    if (!s_sf.applied) return;
-    s_sf.applied = 0;
+    if (!s_sf.pose.applied) return;
+    s_sf.pose.applied = 0;
     int16_t *M = (int16_t *)(ram + 0xB928Cu);
-    if (!memcmp(M, s_sf.wrote, sizeof s_sf.wrote)) memcpy(M, s_sf.saved, sizeof s_sf.saved);
+    if (!memcmp(M, s_sf.pose.wrote, sizeof s_sf.pose.wrote)) memcpy(M, s_sf.pose.saved, sizeof s_sf.pose.saved);
 }
 /* 13.10 поздний вечер (3): DC_POSE_LOG=1 - нарисованная поза Регины на входе в её отрисовку, после всех наших правок (руки и
  * голова - ao, ноги и корпус - стрейф): углы локальных матриц узлов 0 (корпус), 7 (голова), 8 (таз), смещение корня и курс
@@ -2711,7 +2732,7 @@ void dc_ladder_draw_enter(CPUState *cpu) {
     (void)cpu;
     strafe_draw_enter();                       /* 12.10: стрейф в прицеле (выше) */
     pose_log();                                /* 13.10 поздний вечер (3): DC_POSE_LOG - нарисованная поза */
-    s_lad_applied = 0;
+    s_sf.pose.ladder_applied = 0;
     const int d = lad_shift_cfg(); if (!d) return;
     uint8_t *ram = memory_get_ram_ptr(); if (!ram) return;
     if (ram[0xB92C8] != 4 || lad_s16(ram, 0xB93DE) != 2) return;              /* скриптовое движение Регины */
@@ -2748,21 +2769,31 @@ void dc_ladder_draw_enter(CPUState *cpu) {
     const int dd = (s_lad_up && lad_shift_up_cfg()) ? lad_shift_up_cfg() : d;   /* 28.09 (3): подъём — своя величина */
     const int dz = (int)lroundf((float)dd * t); if (!dz) return;
     int16_t *p = (int16_t *)(ram + LAD_NODE0 + 68u);
-    for (int i = 0; i < 3; i++) s_lad_saved[i] = p[i];
+    for (int i = 0; i < 3; i++) s_sf.pose.ladder_saved[i] = p[i];
     p[2] = (int16_t)(p[2] - dz);                                               /* лицом к лестнице — +z; назад — минус */
-    for (int i = 0; i < 3; i++) s_lad_wrote[i] = p[i];
-    s_lad_applied = 1;
+    for (int i = 0; i < 3; i++) s_sf.pose.ladder_wrote[i] = p[i];
+    s_sf.pose.ladder_applied = 1;
 }
 void dc_ladder_draw_exit(CPUState *cpu) {
     (void)cpu;
     strafe_draw_exit();                        /* 12.10: стрейф в прицеле */
-    if (!s_lad_applied) return;
-    s_lad_applied = 0;
+    if (!s_sf.pose.ladder_applied) return;
+    s_sf.pose.ladder_applied = 0;
     uint8_t *ram = memory_get_ram_ptr(); if (!ram) return;
     int16_t *p = (int16_t *)(ram + LAD_NODE0 + 68u);
-    if (p[0] == s_lad_wrote[0] && p[1] == s_lad_wrote[1] && p[2] == s_lad_wrote[2]) { for (int i = 0; i < 3; i++) p[i] = s_lad_saved[i]; }
+    if (p[0] == s_sf.pose.ladder_wrote[0] && p[1] == s_sf.pose.ladder_wrote[1] && p[2] == s_sf.pose.ladder_wrote[2]) { for (int i = 0; i < 3; i++) p[i] = s_sf.pose.ladder_saved[i]; }
     else { static int n = 0; if (++n <= 5) fprintf(stderr, "ladder: the root offset changed during the draw - left as the game wrote it%c", 10); }
 }
+void dc_ladder_draw_capture(DcDrawPose *pose)
+{
+    *pose = s_sf.pose;
+}
+void dc_ladder_draw_restore(CPUState *cpu, const DcDrawPose *pose)
+{
+    s_sf.pose = *pose;
+    dc_ladder_draw_exit(cpu);
+}
+
 int dc_aimoff_status(float *elev, float *target, float *theta, float *e_up, float *e_level, float *e_down, int *pistol, long *applied) {
     ao_cfg();
     *elev = s_ao.elev; *target = s_ao.target; *theta = s_ao.theta; *applied = s_ao.applied;

@@ -1,0 +1,30 @@
+# dcme-posdiff 2
+F runtime/src/text_xlate.cpp 613576b10fac3c21f6d4c54d3c20242c0c3a2f545a76a722fbfa018ebcc019fd 1028
+@ 4 0
++ I2luY2x1ZGUgImNyYXNoX3RyYWNlLmgiCg==
+@ 570 0
++ I2lmZGVmIERDX1RDQl9DUFMK
+~ +ICAgICA= =352,14,12 +c3hfZmF0YWxfaGFsdCgiVHJhbnNsYXRpb24gVlJBTQ== =907,41,13 +dW5hdmFpbGFibGUgaW4gdGhpcyBidWlsZCIpOwo=
+~ +ICAgICA= =503,1,16 +YWJvcnQoKTsK
++ I2Vsc2UK
+@ 571 0
++ I2VuZGlmCg==
+@ 757 0
++ I2lmbmRlZiBEQ19UQ0JfQ1BTCg==
+@ 780 0
++ Cg==
++ I2VuZGlmCg==
+@ 911 0
++ I2lmZGVmIERDX1RDQl9DUFMK
+~ +ICAgIHBzeF9mYXRhbF9oYWx0KCJUcmFuc2xhdGlvbiBWUkFN =907,41,13 +dW5hdmFpbGFibGUgaW4gdGhpcyBidWlsZCIpOwo=
++ ICAgIHN0ZDo6YWJvcnQoKTsK
++ I2Vsc2UK
+@ 912 0
++ I2VuZGlmCg==
+@ 969 0
++ I2lmZGVmIERDX1RDQl9DUFMK
+~ =950,0,39
+~ +IA== =951,1,15 +b2tcIjpmYWxzZSxcImVycm9yXCI6XCJUcmFuc2xhdGlvbiBWUkFN =907,41,13 +dW5hdmFpbGFibGUgaW4gdGhpcyBidWlsZFwifSIpOwo=
++ I2Vsc2UK
+@ 983 0
++ I2VuZGlmCg==

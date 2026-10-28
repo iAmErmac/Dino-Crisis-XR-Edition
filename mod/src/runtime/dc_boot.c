@@ -355,6 +355,60 @@ static void log_line(char *s)
         if (s_after++ < DC_LOG_AFTER) log_put(ms, s);
         return;
     }
+    {
+        static int present_trace = -1;
+        if (present_trace < 0) {
+            const char *developer = getenv("PSX_DEBUG_SERVER");
+            const char *trace = getenv("DC_PRESENT_DBG");
+            present_trace = developer && strcmp(developer, "1") == 0 &&
+                            trace && strcmp(trace, "1") == 0;
+        }
+        if (present_trace && (!strncmp(s, "presdbg:", 8) || !strncmp(s, "presdump:", 9) ||
+                              !strncmp(s, "half:", 5) || !strncmp(s, "doordump:", 9) ||
+                              !strncmp(s, "aspdbg:", 7))) {
+            log_put(ms, s);
+            return;
+        }
+    }
+    {
+        static int skip_profile = -1;
+        if (skip_profile < 0) {
+            const char *developer = getenv("PSX_DEBUG_SERVER");
+            const char *profile = getenv("DC_SKIP_PROFILE");
+            skip_profile = developer && strcmp(developer, "1") == 0 &&
+                           profile && strcmp(profile, "1") == 0;
+        }
+        if (skip_profile && !strncmp(s, "skip:", 5)) {
+            log_put(ms, s);
+            return;
+        }
+    }
+    {
+        static int transition_trace = -1;
+        if (transition_trace < 0) {
+            const char *developer = getenv("PSX_DEBUG_SERVER");
+            const char *trace = getenv("DC_FF_LOG");
+            transition_trace = developer && strcmp(developer, "1") == 0 &&
+                               trace && strcmp(trace, "1") == 0;
+        }
+        if (transition_trace && !strncmp(s, "[FF] transition:", 16)) {
+            log_put(ms, s);
+            return;
+        }
+    }
+    {
+        static int pace_trace = -1;
+        if (pace_trace < 0) {
+            const char *developer = getenv("PSX_DEBUG_SERVER");
+            const char *trace = getenv("DC_PACE_STAT");
+            pace_trace = developer && strcmp(developer, "1") == 0 &&
+                         trace && strcmp(trace, "1") == 0;
+        }
+        if (pace_trace && !strncmp(s, "pacelat:", 8)) {
+            log_put(ms, s);
+            return;
+        }
+    }
     LogRingLine *r = &s_ring[s_ring_at];
     r->ms = ms;
     snprintf(r->text, sizeof r->text, "%s", s);

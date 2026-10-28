@@ -1,3 +1,4 @@
+#include "dc_fk_policy.h"
 /* dc_mods — моды: файл из папки mods подменяет файл игры с тем же именем.
  *
  * ⭐ 04.10.2026 (вечер, 7), игрок: «не забудь про поддержку модов — нужна папка mods с подпапками в директории, куда игра
@@ -2054,10 +2055,12 @@ void dc_mods_reload(void)
  * room), else the room's kinds folders (mods\rooms\<ROOM>\kinds\<actor>_<SRCROOM>). A room without a bank of slot 2 (ST407)
  * takes its stage's from the nearest room of the stage before it that has one. DC_FK_SOUND=0 - off. */
 #include "cpu_state.h"
+#include "dc_sound_swap.h"
+#ifndef DC_TCB_CPS
 extern void func_8005C9A4(CPUState *cpu);
+#endif
 extern const uint8_t *memory_mod_ptr(uint32_t phys, uint32_t len);
 extern uint8_t *spu_xpage(int page);
-extern void spu_xpage_capture(int page);
 extern int dc_room_current(void);
 extern const char *dc_room_name(int room);
 
@@ -2307,12 +2310,7 @@ static void standdown_tick(void)
 void dc_fk_sound_tick(void)
 {
     standdown_tick();
-    {   /* 07.10.2026: the handler slots of Regina's special modes - their per-family copies are of one room */
-        extern void dc_fk_gsv_reset(void);
-        static int gs_room = -2;
-        const int rm = dc_room_current();
-        if (rm != gs_room) { gs_room = rm; dc_fk_gsv_reset(); }
-    }
+    dc_fk_room_tick(dc_room_current());
     if (!fks_on()) return;
     const uint8_t *ram = memory_get_ram_ptr();
     if (!ram) return;
@@ -2333,10 +2331,10 @@ void dc_fk_sound_tick(void)
     }
 }
 
-int dc_fk_sound(CPUState *cpu)
+int dc_fk_sound_prepare(CPUState *cpu, DcSoundSwap *swap)
 {
-    static int in = 0;
-    if (in || !fks_on()) return 0;
+    memset(swap, 0, sizeof *swap);
+    if (!fks_on()) return 0;
     const uint32_t id = cpu->gpr[5] & 0xFFu;
     if (id < 0x30u || id > 0xDFu) return 0;
     uint8_t *ram = memory_get_ram_ptr();
@@ -2371,10 +2369,11 @@ int dc_fk_sound(CPUState *cpu)
     const uint8_t *e = R->ent[id];
     const uint32_t slot = e[0] & 0x3Fu;
     if ((e[0] >> 6) == 2u && (slot >= 8u || !R->hdr[slot])) return 0;
-    uint8_t keep_e[4], keep_t[4];
     const uint32_t ea = 0x1FE900u + id * 4u, ta = 0x9E538u + (slot & 7u) * 4u;
-    memcpy(keep_e, ram + ea, 4);
-    memcpy(keep_t, ram + ta, 4);
+    swap->entry_address = ea; swap->table_address = ta;
+    memcpy(&swap->entry_word, ram + ea, 4);
+    memcpy(&swap->table_word, ram + ta, 4);
+    swap->page = (uint32_t)ri + 1;
     memcpy(ram + ea, e, 4);
     if (slot < 8u && R->hdr[slot]) { const uint32_t h = R->hdr[slot]; memcpy(ram + ta, &h, 4); }
     {   static int lg = -1; static int nlog = 0;
@@ -2382,12 +2381,19 @@ int dc_fk_sound(CPUState *cpu)
         if (lg && nlog < 400) { nlog++;
             fprintf(stderr, "fksound: actor %05X kind %d bank %d id %02X -> %s entry %02X%02X%02X%02X\n", (unsigned)a0, kind, k,
                     (unsigned)id, R->room, e[0], e[1], e[2], e[3]); } }
-    spu_xpage_capture(ri + 1);
+    dc_sound_capture_page(swap->page);
+    return 1;
+}
+#ifndef DC_TCB_CPS
+int dc_fk_sound(CPUState *cpu)
+{
+    static int in;
+    DcSoundSwap swap;
+    if (in || !dc_fk_sound_prepare(cpu, &swap)) return 0;
     in = 1;
     func_8005C9A4(cpu);
     in = 0;
-    spu_xpage_capture(0);
-    memcpy(ram + ea, keep_e, 4);
-    memcpy(ram + ta, keep_t, 4);
+    dc_sound_swap_restore(&swap);
     return 1;
 }
+#endif

@@ -1,0 +1,82 @@
+# dcme-posdiff 2
+F runtime/src/gpu_hd_textures.cpp ade31a4f8b1856614f49ee6b8bc2cb7496872adb01f774c6626d0eecdda5aa79 635
+@ 63 0
++ Y29uc3QgY2hhciBrUHJvZHVjdENhcGFiaWxpdHlFcnJvcltdID0K
+~ +ICAgICJIRA== =335,40,8 =335,63,12 +IGFuZCBkdW1waW5nIGFyZSB1bmF2YWlsYWJsZSBpbiB0aGlzIHByb2R1Y3QgYnVpbGQuIjsK
+~ =45,4,12 +cHJvZHVjdF9jYXBhYmlsaXR5 =45,20,8
+@ 273 0
++ I2lmIGRlZmluZWQoRENfVENCX0NQUykK
+~ =302,4,8 =302,33,16 +ZHVtcCkgewo=
++ ICAgICAgICBwcm9kdWN0X2NhcGFiaWxpdHlfZXJyb3IgPSBrUHJvZHVjdENhcGFiaWxpdHlFcnJvcjsK
+~ =299,8,30 +a1Byb2R1Y3RDYXBhYmlsaXR5RXJyb3IpOwo=
+~ =339,0,15 +MDsK
+~ =98,0,6
++ I2VuZGlmCg==
+@ 294 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 295 0
++ I2VuZGlmCg==
+@ 322 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 324 0
++ I2VuZGlmCg==
+@ 325 0
++ ICAgICAgICBwcm9kdWN0X2NhcGFiaWxpdHlfZXJyb3IuY2xlYXIoKTsK
+@ 345 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 347 0
++ I2VuZGlmCg==
+@ 348 0
++ ICAgIHByb2R1Y3RfY2FwYWJpbGl0eV9lcnJvci5jbGVhcigpOwo=
+@ 355 0
++ I2lmIGRlZmluZWQoRENfVENCX0NQUykK
+~ =358,0,15 +KSB7Cg==
++ ICAgICAgICBwcm9kdWN0X2NhcGFiaWxpdHlfZXJyb3IgPSBrUHJvZHVjdENhcGFiaWxpdHlFcnJvcjsK
+~ =295,0,23
+~ =362,0,34 +a1Byb2R1Y3RDYXBhYmlsaXR5RXJyb3I7Cg==
+~ +ICAgIA== =261,0,37
+~ =97,0,10
+~ =339,0,14 +Owo=
+~ =98,0,6
++ I2VuZGlmCg==
+@ 357 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 358 0
++ I2VuZGlmCg==
+@ 365 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 366 0
++ I2VuZGlmCg==
+@ 375 1
+~ =375,0,19 +Cg==
+~ +ICAgICAgIA== =375,19,16 +Cg==
+~ +ICAgIA== =396,0,22 +cHJvZHVjdF9jYXBhYmlsaXR5X2Vycm9y =396,49,10
+~ =339,0,14 +Owo=
+~ =98,0,6
+~ +Iw== =375,4,3 +IWRlZmluZWQoRENfVENCX0NQUykK
+@ 378 0
++ I2VuZGlmCg==
+@ 410 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 411 0
++ I2VuZGlmCg==
+@ 534 0
++ I2lmIGRlZmluZWQoRENfVENCX0NQUykK
+~ +ICAgICh2b2lkKQ== =570,20,14 +Owo=
++ I2VuZGlmCg==
+@ 570 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 574 0
++ I2VuZGlmCg==
+@ 578 0
++ I2lmICFkZWZpbmVkKERDX1RDQl9DUFMpCg==
+@ 579 0
++ I2VuZGlmCg==
+@ 621 0
++ I2lmIGRlZmluZWQoRENfVENCX0NQUykK
++ ICAgICh2b2lkKXRwOyAodm9pZCljeDsgKHZvaWQpY3k7ICh2b2lkKWxpbWl0czsgKHZvaWQpd2luZG93OyAodm9pZClzZW1pOwo=
+~ +ICAgIGlmIChpbWFnZSk= =535,3,14
++ ICAgIHJldHVybiAwOwo=
++ I2Vsc2UK
+@ 622 0
++ I2VuZGlmCg==
