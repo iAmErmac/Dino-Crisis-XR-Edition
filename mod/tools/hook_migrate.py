@@ -1090,7 +1090,8 @@ def analyze_operation(
         begin = (f"    if (!dc_blood_call_begin(cpu, 0x{continuation}u)) {{\n"
                  f"        psx_check_interrupts_at(cpu, 0x{continuation}u);\n"
                  f"        cpu->pc = 0x{continuation}u; return;\n    }}\n").splitlines(keepends=True)
-        resume = (f"    if (dc_blood_call_return(cpu, 0x{continuation}u)) {{\n"
+        # A guest branch can share the callee's return block.
+        resume = (f"    if (cpu->gpr[31] == 0x{continuation}u && dc_blood_call_return(cpu, 0x{continuation}u)) {{\n"
                   f"        psx_check_interrupts_at(cpu, 0x{callee}u);\n"
                   f"        cpu->pc = 0x{callee}u; return;\n    }}\n").splitlines(keepends=True)
         has_begin = _payload_at_boundary(lines, poll, begin)

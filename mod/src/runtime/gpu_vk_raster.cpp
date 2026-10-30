@@ -4622,7 +4622,18 @@ static int s_prev_no3d_pub = 0;   /* см. dcvk_no_world_now ниже */
  * Регины нет руки. Порог в процентах задаёт DC_VERT_HOLD (умолч. 88),
  * 0 — выключить признак. Решение «показывать или нет» принимает main.cpp. */
 static int s_vertMed = 0;           /* медиана числа вершин за 8 показанных кадров */
+extern "C" int dcvk_submit_count(void);
+extern "C" int dcvk_warp_pending(void);
+#if defined(DC_TCB_CPS)
+extern "C" int dma_gpu_linked_list_active(void);
+#endif
 extern "C" int dcvk_vert_drop(void) {
+    /* An idle cached frame has no new geometry to validate. */
+    if (dcvk_stream_count() == 0 && dcvk_submit_count() == 0 &&
+#if defined(DC_TCB_CPS)
+        !dma_gpu_linked_list_active() &&
+#endif
+        dcvk_warp_pending()) return 0;
     /* Считается ПО ТЕКУЩЕМУ накопленному потоку, а не по прошлому кадру:
      * main.cpp спрашивает это ДО рендера, решая, показывать ли кадр. */
     /* ⭐ ПОРОГ 88 % ПРОПУСКАЛ РЕАЛЬНЫЙ ДЕФЕКТ (09.09.2026, кольцо кадров

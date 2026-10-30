@@ -448,12 +448,127 @@ void func_80020000(CPUState* cpu)
         self.assertEqual(result["kind"], "blood-cps-loop")
         self.assertIn("dc_blood_call_begin", "".join(changes[0][3]))
         self.assertIn("dc_blood_call_return", "".join(changes[1][3]))
+        self.assertIn(
+            "if (cpu->gpr[31] == 0x8001000Cu && dc_blood_call_return(cpu, 0x8001000Cu))",
+            "".join(changes[1][3]),
+        )
         self.assertIn("cpu->pc = 0x80020000u; return;", "".join(changes[1][3]))
         output = self.root / "blood"
         hook_migrate.apply_changes(self.generated, output, changes)
         result, changes = hook_migrate.analyze_operation(hook_migrate.GeneratedSources(output), edit, old)
         self.assertEqual(result["disposition"], "retained")
         self.assertIsNone(changes)
+
+    def test_blood_transformed_shared_continuation_filters_direct_branches(self):
+        compiler = shutil.which("cl")
+        if compiler is None:
+            self.skipTest("MSVC is not available on PATH")
+        source = """#include <stdint.h>
+typedef struct CPUState {
+    uint32_t pc;
+    uint32_t gpr[32];
+} CPUState;
+static int blood_begin_calls;
+static int blood_return_calls;
+static int blood_missing_frame_calls;
+static int blood_frame_live;
+static int blood_repeats;
+static void psx_check_interrupts_at(CPUState *cpu, uint32_t pc) { (void)cpu; (void)pc; }
+static int dc_blood_call_begin(CPUState *cpu, uint32_t pc)
+{
+    (void)cpu; (void)pc; ++blood_begin_calls; blood_frame_live = 1; return 1;
+}
+static int dc_blood_call_return(CPUState *cpu, uint32_t pc)
+{
+    (void)cpu; (void)pc; ++blood_return_calls;
+    if (!blood_frame_live) { ++blood_missing_frame_calls; return 0; }
+    if (blood_repeats) { --blood_repeats; return 1; }
+    blood_frame_live = 0;
+    return 0;
+}
+
+void func_80010000(CPUState* cpu)
+{
+    if (cpu->pc != 0u) {
+        uint32_t _cont = cpu->pc; cpu->pc = 0;
+        switch (_cont) { case 0x8001000Cu: goto block_8001000C; default: break; }
+    }
+    if (cpu->gpr[2] != 0u) goto block_8001000C;
+    cpu->gpr[31] = 0x8001000Cu;
+    cpu->gpr[4] = cpu->gpr[16]; /* 0x80010008: 0x02002021 */
+    psx_check_interrupts_at(cpu, 0x80020000u);
+    cpu->pc = 0x80020000u; return;
+block_8001000C:
+    cpu->gpr[2] = 0; /* 0x8001000C: 0x92020016 */
+}
+void func_80020000(CPUState* cpu)
+{
+    cpu->pc = cpu->gpr[31]; /* 0x80020000: 0x03E00008 */
+}
+"""
+        (self.generated / "sample_full_00.c").write_text(source, encoding="utf-8")
+        payload = """PSX_SPILL;
+{ extern int dc_blood_mult(void); extern int dc_blood_pool_room(void);
+  extern uint32_t dc_rng_seed_get(void); extern void dc_rng_seed_set(uint32_t);
+  uint32_t _a0 = cpu->gpr[4], _ra = cpu->gpr[31]; uint32_t _seed = dc_rng_seed_get();
+  int _n = dc_blood_mult(); for (int _i = 0; _i < _n; _i++) {
+    if (_i && !dc_blood_pool_room()) break;
+    cpu->gpr[4] = _a0; cpu->gpr[31] = _ra; func_80020000(cpu);
+  } dc_rng_seed_set(_seed); } PSX_RELOAD;
+"""
+        edit = operation(
+            0,
+            "80010000",
+            payload,
+            previous=anchor("80010008", "02002021"),
+            following=anchor("8001000C", "92020016"),
+        )
+        old = decoded(0, "80010000", payload)
+        result, changes = hook_migrate.analyze_operation(
+            hook_migrate.GeneratedSources(self.generated), edit, old
+        )
+        self.assertEqual(result["disposition"], "adapted", result)
+        output = self.root / "blood_controlflow"
+        hook_migrate.apply_changes(self.generated, output, changes)
+        harness = output / "blood_controlflow_main.c"
+        harness.write_text(
+            '#include "sample_full_00.c"\n'
+            "int main(void) {\n"
+            "    CPUState direct = {0};\n"
+            "    direct.gpr[2] = 1u; direct.gpr[31] = 0x8000AAA0u;\n"
+            "    func_80010000(&direct);\n"
+            "    if (blood_return_calls != 0 || direct.gpr[2] != 0u) return 1;\n"
+            "    CPUState resumed = {0};\n"
+            "    resumed.pc = 0x8001000Cu; resumed.gpr[31] = 0x8000BBB0u;\n"
+            "    func_80010000(&resumed);\n"
+            "    if (blood_return_calls != 0 || resumed.gpr[2] != 0u) return 2;\n"
+            "    CPUState blood = {0};\n"
+            "    blood_repeats = 1;\n"
+            "    func_80010000(&blood);\n"
+            "    if (blood_begin_calls != 1 || blood.pc != 0x80020000u) return 3;\n"
+            "    func_80020000(&blood); func_80010000(&blood);\n"
+            "    if (blood_return_calls != 1 || blood.pc != 0x80020000u) return 4;\n"
+            "    func_80020000(&blood); func_80010000(&blood);\n"
+            "    if (blood_return_calls != 2 || blood.pc != 0u) return 5;\n"
+            "    CPUState missing = {0};\n"
+            "    missing.pc = 0x8001000Cu; missing.gpr[31] = 0x8001000Cu;\n"
+            "    func_80010000(&missing);\n"
+            "    if (blood_return_calls != 3 || blood_missing_frame_calls != 1) return 6;\n"
+            "    return 0;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        executable = output / "blood_controlflow.exe"
+        compile_result = subprocess.run(
+            [compiler, "/nologo", "/std:c11", f"/Fe{executable}", str(harness)],
+            cwd=output,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(compile_result.returncode, 0, compile_result.stdout + compile_result.stderr)
+        run_result = subprocess.run([str(executable)], cwd=output, check=False)
+        self.assertEqual(run_result.returncode, 0)
 
     def test_draw_pose_uses_private_return_edge_and_rejects_partial_pair(self):
         source = """void func_80010000(CPUState* cpu)

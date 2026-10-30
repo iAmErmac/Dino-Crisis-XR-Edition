@@ -45,6 +45,7 @@ def prepare(framework, output, frontend_base=None):
     starvation_ring_patch = mod / "patches/psxrecomp-starvation-ring.dcpatch"
     gte_patch = mod / "patches/psxrecomp-gte.dcpatch"
     memory_patch = mod / "patches/psxrecomp-memory.dcpatch"
+    pgxp_dispatch_patch = mod / "patches/psxrecomp-pgxp-dispatch.dcpatch"
     spu_patch = mod / "patches/psxrecomp-spu.dcpatch"
     dma_patch = mod / "patches/psxrecomp-dma.dcpatch"
     cdrom_patch = mod / "patches/psxrecomp-cdrom.dcpatch"
@@ -71,6 +72,7 @@ def prepare(framework, output, frontend_base=None):
     posdiff.apply(str(starvation_ring_patch), str(output))
     posdiff.apply(str(gte_patch), str(output))
     posdiff.apply(str(memory_patch), str(output))
+    posdiff.apply(str(pgxp_dispatch_patch), str(output))
     posdiff.apply(str(spu_patch), str(output))
     posdiff.apply(str(dma_patch), str(output))
     posdiff.apply(str(cdrom_patch), str(output))
@@ -232,7 +234,7 @@ def prepare(framework, output, frontend_base=None):
     ]
     affected.extend(["runtime/src/psx_cycles.c", "runtime/include/psx_cycles.h"])
     affected.append("runtime/src/host_sampler.c")
-    patches = [core_patch, idle_patch, host_profile_patch, kernel_patch, pgxp_patch, pgxp_session_patch, starvation_ring_patch, gte_patch, memory_patch, spu_patch, dma_patch, cdrom_patch, debug_patch, crash_patch, overlay_patch, selfcheck_patch, hd_patch, translation_patch, mod_runtime_patch, fntrace_patch, bios_backend_patch, interpreter_patch, iso_patch, boot_patch, gcp_pc_patch, input_debug_patch, audio_debug_patch]
+    patches = [core_patch, idle_patch, host_profile_patch, kernel_patch, pgxp_patch, pgxp_session_patch, starvation_ring_patch, gte_patch, memory_patch, pgxp_dispatch_patch, spu_patch, dma_patch, cdrom_patch, debug_patch, crash_patch, overlay_patch, selfcheck_patch, hd_patch, translation_patch, mod_runtime_patch, fntrace_patch, bios_backend_patch, interpreter_patch, iso_patch, boot_patch, gcp_pc_patch, input_debug_patch, audio_debug_patch]
     if frontend_base is not None:
         gpu_patch = mod / "patches/dc-gpu-tcb.dcpatch"
         if sha(frontend_base / "runtime/src/gpu.c") != "ae239fe2fb7dbe3ef18cad8f00953f83dd3b4514aa9ed876c5a2b12afe0c99b8":
@@ -273,6 +275,12 @@ def prepare(framework, output, frontend_base=None):
         posdiff.apply(str(product_update_patch), str(output))
         patches.append(product_update_patch)
         affected.append("runtime/src/iso_reader_c.cpp")
+        cdrom_deadline_patch = mod / "patches/dc-cdrom-deadline.dcpatch"
+        posdiff.apply(str(cdrom_deadline_patch), str(output))
+        patches.append(cdrom_deadline_patch)
+        reticle_present_patch = mod / "patches/dc-reticle-present.dcpatch"
+        posdiff.apply(str(reticle_present_patch), str(output))
+        patches.append(reticle_present_patch)
 
     manifest = {
         "schema": 1,

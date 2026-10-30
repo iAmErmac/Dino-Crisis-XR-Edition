@@ -1,0 +1,25 @@
+# dcme-posdiff 2
+F runtime/src/dc_frontend.cpp 5b37c81d04ab482b67951b2fe97d2dcf2ec54a0fdf55e8c78dca8dbcc7890898 19429
+@ 2167 0
+~ +c3RhdGljIERjUmV0aWNsZSBz =2170,70,10 +bmFwc2hvdDsK
+~ =7231,79,13 +cmV0aWNsZV92aXNpYmxlID0gMDsK
++ Cg==
+@ 2169 0
++ ICAgIHNfcmV0aWNsZV92aXNpYmxlID0gMDsK
+@ 2255 0
+~ +ICAgIHM= =2170,70,10 +bmFwc2hvdCA9IG87Cg==
++ ICAgIHNfcmV0aWNsZV92aXNpYmxlID0gMTsK
+@ 13672 0
+~ =1866,0,20
+~ =2202,0,14 +cmV0aWNsZTsK
++ ICAgIGludCByZXRpY2xlX3Zpc2libGU7Cg==
+~ =114,0,7
+@ 13735 0
+~ =1866,0,20
+~ =13776,0,12 +dGljbGVfdmlzaWJsZSk= =2255,3,21 +cC5yZXRpY2xlKTsK
+~ =114,0,7
+@ 13945 0
+~ =1866,0,20
+~ +ICAgIHAucmV0aWNsZSA9IHM= =2170,70,10 +bmFwc2hvdDsK
+~ +ICAgIHAucmV0aWNsZV92aXNpYmxlID0gcw== =2170,35,9 +dmlzaWJsZTsK
+~ =114,0,7

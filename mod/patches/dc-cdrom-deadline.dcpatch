@@ -1,0 +1,18 @@
+# dcme-posdiff 2
+F runtime/src/cdrom.c 5b383d50e291707bf6f7ecca8cded673ea1573f6cd04fd6a938ff1fe5d80b4ed 3943
+@ 3294 0
++ ICAgIHBzeF9kZXZpY2VzX2RlYWRsaW5lX2NoYW5nZWQoKTsK
+@ 3306 1
+~ +ICAgIGlmICg= =1015,8,27 +ICYmCg==
+~ +ICAgICAgICA= =3306,8,55
+F runtime/src/psx_cycles.c db9eaf30cce68621b9120ab91bdd79f4e6ace13922fd8ed46b922fdfd016e769 1236
+@ 416 0
+~ =343,7,17 =343,34,8 +X2NoYW5nZWQ= =343,42,9
+~ =457,0,32
+~ =150,0,32
+~ =46,0,2
++ Cg==
+F runtime/include/psx_cycles.h a37f30848240412be8e7b7d0bb78934908a5d4ba4e7a2f11d3505ce701e30846 309
+@ 38 0
++ LyogUmVjaGVjayBkZXZpY2UgZGVhZGxpbmVzIGFmdGVyIGNoYW5naW5nIGEgY29udHJvbGxlciBzY2hlZHVsZS4gKi8K
+~ =37,0,17 +ZGVhZGxpbmVfY2hhbmdlZA== =37,26,8
