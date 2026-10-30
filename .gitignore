@@ -60,3 +60,13 @@ htmlcov/
 /door-capture*
 /screenshot*.bmp
 /fmv*.bmp
+
+# Local presentation captures and link outputs
+/doorrec_*
+/ring*.txt
+/ring*.bmp
+/warpdump*
+/fadedump*
+/cutdump*
+/laserrec*
+/*.lib

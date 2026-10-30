@@ -179,6 +179,7 @@ set(STAGE_PRODUCT_SOURCES
     "${STAGE_SRC}/dc_gpu.c"
     "${STAGE_SRC}/dc_grenade_calls.c"
     "${STAGE_SRC}/dc_gte_capture.c"
+    "${STAGE_SRC}/dc_projection_pairs.cpp"
     "${STAGE_SRC}/dc_gte_camera.c"
     "${STAGE_SRC}/pgxp_addr.c"
     "${STAGE_SRC}/dc_guest_registers.c"

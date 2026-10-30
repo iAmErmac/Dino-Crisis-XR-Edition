@@ -951,6 +951,75 @@ void dc_tilt_unsink(void) {
     #undef TU_U32
     #undef TU_S16
 }
+/* Keep Gail at the scripted fence position before the second scene starts. */
+void dc_gail_fence_tick(void) {
+    static int en = -1, said_bad = 0, blend_wait = 0;
+    static uint32_t blend_at = 0;
+    if (en < 0) { const char *e = getenv("DC_GAIL_AT_FENCE"); en = (e && *e == '0') ? 0 : 1; }
+    if (!en) return;
+    uint8_t *r = memory_get_ram_ptr(); if (!r) return;
+    #define GF_U32(ad) ((uint32_t)r[(ad)] | ((uint32_t)r[(ad) + 1] << 8) | ((uint32_t)r[(ad) + 2] << 16) | ((uint32_t)r[(ad) + 3] << 24))
+    #define GF_S16(ad) ((int16_t)(r[(ad)] | (r[(ad) + 1] << 8)))
+    #define GF_W16(ad, v) do { r[(ad)] = (uint8_t)((v) & 0xFF); r[(ad) + 1] = (uint8_t)(((v) >> 8) & 0xFF); } while (0)
+    #define GF_W32(ad, v) do { GF_W16((ad), (v)); GF_W16((ad) + 2, (v) >> 16); } while (0)
+    #define GF_OP_0222 (0x0222u | (0x08u << 16))
+    if (blend_at) {
+        const uint32_t s12 = blend_at - 7u, pc = GF_U32(0xC5010u + 4u * 176u + 0x58u) & 0x1FFFFFu;
+        if (pc < s12 || pc >= s12 + 12u || ++blend_wait > 240) {
+            if (GF_U32(s12) == GF_OP_0222 && GF_U32(s12 + 4u) == 0x00002024u) r[blend_at] = 0x1E;
+            blend_at = 0;
+        }
+    }
+    if (r[0xC12F0] != 0x0D || r[0xC12F1] != 1) return;
+    const uint32_t fb = GF_U32(0x9CB48u) & 0x1FFFFFu;
+    if (fb < 0x1000u || fb + 8u >= RAM_SIZE || (r[fb + (42u >> 3)] & (1u << (42 & 7)))) return;
+    const uint32_t S = (uint32_t)(scratchpad[0] | (scratchpad[1] << 8) | (scratchpad[2] << 16) |
+                                  ((uint32_t)scratchpad[3] << 24)) & 0x1FFFFFu;
+    if (S < 0x1000u || S + 0x27Cu + 10u * 0x260u >= RAM_SIZE) return;
+    const uint32_t B = GF_U32(S + 616u), b = B & 0x1FFFFFu;
+    if (b < 0x1000u || b + 0x8000u >= RAM_SIZE) return;
+    const uint32_t nsub = GF_U32(b) / 4u;
+    if (nsub < 22u || nsub > 64u) return;
+    #define GF_SUB(i) (b + GF_U32(b + 4u * (uint32_t)(i)))
+    const uint32_t s2 = GF_SUB(2), s12 = GF_SUB(12), s20 = GF_SUB(20), s21 = GF_SUB(21), s0 = GF_SUB(0), s1 = GF_SUB(1);
+    if (s0 >= s1 || s20 >= s21 || s21 - s20 > 0x400u || s1 - s0 > 0x1000u || s2 + 0x100u >= RAM_SIZE || s12 + 16u >= RAM_SIZE) return;
+    uint32_t p2 = 0;
+    for (uint32_t p = s2; p + 32u < s2 + 0xA0u; p += 4u)
+        if (GF_U32(p) == 0x00000406u && GF_U32(p + 4u) == GF_OP_0222 && r[p + 8] == 0x36 && r[p + 9] == 0 &&
+            r[p + 16] == 0x37 && r[p + 17] == 0 && GF_U32(p + 24u) == 0x00002024u) { p2 = p; break; }
+    const uint32_t crouch = p2 ? GF_U32(p2 + 28u) : 0;
+    const int ok12 = p2 && GF_U32(s12) == GF_OP_0222 && (GF_U32(s12 + 4u) == 0x1E002024u ||
+                     (blend_at == s12 + 7u && GF_U32(s12 + 4u) == 0x00002024u)) && GF_U32(s12 + 8u) == crouch;
+    uint32_t sp = 0;
+    for (uint32_t p = s0; ok12 && p + 28u < s1; p += 4u)
+        if (r[p] == 0x20 && r[p + 1] == 0x08 && GF_U32(p + 24u) == 0x00140401u) { sp = p; break; }
+    if (!sp) {
+        if (!said_bad) { said_bad = 1;
+            fprintf(stderr, "gail fence: ST10D script mismatch (sub2=%d sub12=%d spawn=%d); leaving the game placement%c",
+                    p2 != 0, ok12, sp != 0, 10); }
+        return;
+    }
+    const uint32_t A = S + 0x27Cu + 8u * 0x260u;
+    const uint32_t T = 0xC5010u + 4u * 176u;
+    const uint32_t pc = GF_U32(T + 0x58u) & 0x1FFFFFu;
+    if (!(r[A + 0x30] & 1u) || GF_U32(A + 0x9Cu) != GF_U32(sp + 16u) || !r[T + 5] || pc < s20 || pc >= s21) return;
+    const int16_t x = GF_S16(p2 + 10u), y = GF_S16(p2 + 12u), z = GF_S16(p2 + 14u);
+    const int16_t rx = GF_S16(p2 + 18u), ry = GF_S16(p2 + 20u), rz = GF_S16(p2 + 22u);
+    GF_W16(A + 0x20u, x); GF_W16(A + 0x22u, y); GF_W16(A + 0x24u, z);
+    GF_W16(A + 0x13Cu, x); GF_W16(A + 0x13Eu, z);
+    GF_W16(A + 0x28u, rx); GF_W16(A + 0x2Au, ry); GF_W16(A + 0x2Cu, rz);
+    memset(r + T, 0, 176);
+    r[T + 5] = 1;
+    GF_W32(T + 0x58u, B + GF_U32(b + 4u * 12u));
+    GF_W32(T + 0xACu, 0x800C5010u + 4u * 176u + 0x5Cu);
+    r[s12 + 7u] = 0; blend_at = s12 + 7u; blend_wait = 0;
+    #undef GF_SUB
+    #undef GF_W32
+    #undef GF_W16
+    #undef GF_S16
+    #undef GF_U32
+    #undef GF_OP_0222
+}
 void dc_items_still(void) {
     static int en = -1, angle = -1, drop = 0, ground = -1, lift = 8, logi = 1, flaten = 1;
     static uint32_t flat_hash[24]; static int flat_n = 0;
@@ -1322,26 +1391,35 @@ void dc_blood_place(uint32_t slot, uint32_t tmpl, uint32_t actor) {
     uint8_t *r = memory_get_ram_ptr(); if (!r) return;
     uint32_t s = slot & 0x1FFFFFu, a = actor & 0x1FFFFFu;
     if (s + 124u >= 0x200000u || a + 40u >= 0x200000u) return;
-    if (!g_aim_hit_vb || s_frame_count - g_aim_hit_vb > 30) return;
-    if (g_aim_hit_actor != a) return;
+    extern int dc_actor_trex_model(const uint8_t *r, uint32_t a);
+    const float *hpt = g_aim_hit_pt;
+    float gpt[3]; int gl_touch = 0;
+    { static int gt = -1;
+      if (gt < 0) { const char *e = getenv("DC_GL_BLOOD_TOUCH"); gt = e ? atoi(e) : 1; }
+      if (gt > 0 && (r[0xB94CC] & 0xF0) == 0x30 && (gt >= 2 || dc_actor_trex_model(r, a))) {
+          extern int dc_grenade_touch_point(uint32_t actor, float out[3]);
+          if (dc_grenade_touch_point(a, gpt)) { hpt = gpt; gl_touch = 1; } } }
+    if (!gl_touch) {
+        if (!g_aim_hit_vb || s_frame_count - g_aim_hit_vb > 30) return;
+        if (g_aim_hit_actor != a) return;
+    }
     int ax = (int16_t)(r[a+32] | (r[a+33] << 8));
     int ay = (int16_t)(r[a+34] | (r[a+35] << 8));
     int az = (int16_t)(r[a+36] | (r[a+37] << 8));
-    float dx = g_aim_hit_pt[0] - (float)ax;
-    float dy = g_aim_hit_pt[1] - (float)ay;
-    float dz = g_aim_hit_pt[2] - (float)az;
+    float dx = hpt[0] - (float)ax;
+    float dy = hpt[1] - (float)ay;
+    float dz = hpt[2] - (float)az;
     float d  = sqrtf(dx*dx + dy*dy + dz*dz);
     static float maxd = -1.f, maxd_trex = -1.f;
     if (maxd < 0.f) { const char *e = getenv("DC_BLOOD_MAXD"); maxd = e ? (float)atof(e) : 1500.f;
                       e = getenv("DC_TREX_BLOOD_MAXD"); maxd_trex = e ? (float)atof(e) : 16000.f; }
 
-    extern int dc_actor_trex_model(const uint8_t *r, uint32_t a);
     const float lim = dc_actor_trex_model(r, a) ? maxd_trex : maxd;
     if (d > lim) {
         if (dc_bloodprobe_on())
             fprintf(stderr, "bplace SKIP d=%.0f pt=%.0f,%.0f,%.0f actor=%d,%d,%d%c",
-                    (double)d, (double)g_aim_hit_pt[0], (double)g_aim_hit_pt[1],
-                    (double)g_aim_hit_pt[2], ax, ay, az, 10);
+                    (double)d, (double)hpt[0], (double)hpt[1],
+                    (double)hpt[2], ax, ay, az, 10);
         return;
     }
 
@@ -1368,9 +1446,9 @@ void dc_blood_place(uint32_t slot, uint32_t tmpl, uint32_t actor) {
     float j0 = ((float)(BR_NEXT() & 0xFFFF) / 32768.f - 1.f) * jw;
     float j1 = ((float)(BR_NEXT() & 0xFFFF) / 32768.f - 1.f) * jw;
     float j2 = ((float)(BR_NEXT() & 0xFFFF) / 32768.f - 1.f) * jw;
-    int px = (int)lroundf(g_aim_hit_pt[0] + j0);
-    int py = (int)lroundf(g_aim_hit_pt[1] + j1);
-    int pz = (int)lroundf(g_aim_hit_pt[2] + j2);
+    int px = (int)lroundf(hpt[0] + j0);
+    int py = (int)lroundf(hpt[1] + j1);
+    int pz = (int)lroundf(hpt[2] + j2);
     if (scale_on) {
         float k = smin + (smax - smin) * ((float)(BR_NEXT() & 0xFFFF) / 65535.f);
         int w = (int16_t)(r[s+96] | (r[s+97] << 8));
@@ -1402,13 +1480,60 @@ void dc_blood_place(uint32_t slot, uint32_t tmpl, uint32_t actor) {
       dc_blood_watch_note(s, px, py, pz); }
 }
 
+/* Redirect delayed sequence blood only when the same actor was actually hit. */
+void dc_seq_blood_place(uint32_t entry, uint32_t script, uint32_t ctl) {
+    extern int dc_actor_trex_model(const uint8_t *r, uint32_t a);
+    extern int dc_actor_model_bones(const uint8_t *r, uint32_t a);
+    extern int dc_grenade_touch_point(uint32_t actor, float out[3]);
+    extern uint32_t g_aim_hit_actor;
+    extern uint64_t g_aim_hit_vb;
+    extern uint64_t s_frame_count;
+    uint8_t *r = memory_get_ram_ptr(); if (!r) return;
+    const uint32_t s = entry & 0x1FFFFFu, sc = script & 0x1FFFFFu, c = ctl & 0x1FFFFFu;
+    if (s + 124u >= 0x200000u || sc + 20u >= 0x200000u || c + 12u >= 0x200000u) return;
+    const uint32_t own = (uint32_t)r[c + 8] | ((uint32_t)r[c + 9] << 8) |
+                         ((uint32_t)r[c + 10] << 16) | ((uint32_t)r[c + 11] << 24);
+    const uint32_t a = own & 0x1FFFFFu;
+    const int slot = (a >= 0xB7ACCu && a < 0xB7ACCu + 10u * 608u &&
+                      (a - 0xB7ACCu) % 608u == 0u) ? (int)((a - 0xB7ACCu) / 608u) : -1;
+    const int trex = slot >= 0 && dc_actor_trex_model(r, a);
+    const int gl = (r[0xB94CC] & 0xF0) == 0x30;
+    float pt[3] = { 0.f, 0.f, 0.f };
+    static int gt = -1, sh = -1;
+    if (gt < 0) { const char *e = getenv("DC_GL_BLOOD_TOUCH"); gt = e ? atoi(e) : 1; }
+    if (sh < 0) { const char *e = getenv("DC_TREX_SEQ_AT_HIT"); sh = (e && *e == '0') ? 0 : 1; }
+    const int touch = gt > 0 && trex && gl && dc_grenade_touch_point(a, pt);
+    const long long age = g_aim_hit_vb ? (long long)(s_frame_count - g_aim_hit_vb) : -1ll;
+    const int shot = sh && trex && !gl && g_aim_hit_actor == a && age >= 0 && age <= 30;
+    if (dc_bloodprobe_on()) {
+        static long n = 0;
+        if (++n <= 200) {
+            char hx[64]; for (int i = 0; i < 20; i++) snprintf(hx + 3 * i, 4, "%02X ", r[sc + i]);
+            hx[59] = 0;
+            fprintf(stderr, "seqfx: entry %05X script %05X [%s] tick %d owner %08X slot %d bones %d wpn %02X piece %d size %d %s%c",
+                    s, sc, hx, (int)(int16_t)(r[c] | (r[c + 1] << 8)), own, slot,
+                    slot >= 0 ? dc_actor_model_bones(r, a) : -1, r[0xB94CC], r[s + 47],
+                    (int)(int16_t)(r[s + 96] | (r[s + 97] << 8)),
+                    touch ? "grenade touch point" : shot ? "shot hit point" : "script point", 10);
+        }
+    }
+    if (!touch && !shot) return;
+    dc_blood_place(entry, 0, a);
+}
+
 static float s_blast_k[10];
 static unsigned long long s_blast_vb[10];
+static unsigned char s_blast_struck[10];
 void dc_blast_victim(int slot, float k) {
     extern uint64_t s_frame_count;
     if (slot < 0 || slot >= 10) return;
     s_blast_k[slot] = k;
     s_blast_vb[slot] = s_frame_count ? s_frame_count : 1;
+    s_blast_struck[slot] = 0;
+}
+void dc_grenade_contact_victim(int slot) {
+    dc_blast_victim(slot, 1.0f);
+    if (slot >= 0 && slot < 10) s_blast_struck[slot] = 1;
 }
 static int blast_recent(int slot) {
     extern uint64_t s_frame_count;
@@ -1454,10 +1579,14 @@ uint16_t dc_focus_damage_half(uint32_t phys, uint16_t val) {
     {
         const int slot = (int)(off / 608u);
         if (blast_recent(slot) && s_blast_k[slot] > 0.f) {
+            if (!s_blast_struck[slot]) k = 1.0f;
             k *= s_blast_k[slot];
-            static long n = 0;
-            if (++n <= 200) fprintf(stderr, "blastdmg: slot %d hp %d dmg %d x%.2f%c", slot, oldhp, dmg, (double)s_blast_k[slot], 10);
-            s_blast_k[slot] = 0.f;
+            if (dc_bloodprobe_on()) {
+                static long n = 0;
+                if (++n <= 200) fprintf(stderr, "blastdmg: slot %d hp %d dmg %d x%.2f%s%c", slot, oldhp, dmg, (double)s_blast_k[slot],
+                                        s_blast_struck[slot] ? " (struck target)" : "", 10);
+            }
+            s_blast_k[slot] = 0.f; s_blast_struck[slot] = 0;
         } else if ((r[0xB94CC] & 0xF0) == 0x30) {
             extern uint64_t s_frame_count;
             s_gl_direct_vb[slot] = s_frame_count ? s_frame_count : 1;
@@ -3041,6 +3170,8 @@ static float s_wD_N[9], s_wD_eye[3], s_wD_tgt[3];  static int s_wD_have = 0;  st
 static float s_wDp_N[9], s_wDp_eye[3], s_wDp_tgt[3]; static int s_wDp_have = 0; static unsigned long long s_wDp_flip = 0;
 
 static float s_wD_cam = 0.f, s_wDp_cam = 0.f; static int s_wD_her = 0, s_wDp_her = 0;
+typedef struct { float R[9], eye[3], her[3]; int have, yaw, shot, orig, n; long cut; unsigned long long flip; } DcGameCam;
+static DcGameCam s_wG, s_wGp;
 static float s_nots_Dp[9]; static float s_nots_Tp[3]; static int s_nots_dphave = 0;
 
 static int s_nots_D_pass = 0, s_nots_Dp_pass = 0;
@@ -3496,7 +3627,21 @@ int dc_nots_get_owncam(float R9[9], float T3[3]) {
 
 int dc_nots_warp_cams(float Nr[9], float er[3], float tr[3], float Nn[9], float en_[3], float tn[3],
                       unsigned long long *flip_r, unsigned long long *flip_n) {
-    if (g_dc_orig_mode || dc_scene_no_delta()) return 0;
+    if (g_dc_orig_mode) {
+        static int ow = -1; if (ow < 0) { const char *e = getenv("DC_ORIG_WARP"); ow = (e && *e == '0') ? 0 : 1; }
+        extern int dc_orig_native_draw(void);
+        if (!ow || dc_orig_native_draw() || dc_scene_no_delta()) return 0;
+        if (!s_wG.have || !s_wGp.have || !s_wG.orig || !s_wGp.orig) return 0;
+        if (s_wG.shot != s_wGp.shot || s_wG.cut != s_wGp.cut) return 0;
+        if (dc_scripted_now() || dc_scripted_edge()) return 0;
+        { extern int dc_cut_camera(void); if (dc_cut_camera()) return 0; }
+        memcpy(Nr, s_wGp.R, 9 * sizeof(float)); memcpy(er, s_wGp.eye, 3 * sizeof(float)); memcpy(tr, s_wGp.her, 3 * sizeof(float));
+        memcpy(Nn, s_wG.R, 9 * sizeof(float));  memcpy(en_, s_wG.eye, 3 * sizeof(float)); memcpy(tn, s_wG.her, 3 * sizeof(float));
+        if (flip_r) *flip_r = s_wGp.flip;
+        if (flip_n) *flip_n = s_wG.flip;
+        return 2;
+    }
+    if (dc_scene_no_delta()) return 0;
     static int nen = -1; if (nen < 0) { const char *e = getenv("DC_NATIVE_OTS"); nen = (e && *e == '1') ? 1 : 0; }
     if (!nen || !s_nots_dhave || !s_nots_dphave || !s_wD_have || !s_wDp_have) return 0;
     if (dc_scripted_now() || dc_scripted_edge()) return 0;
@@ -3509,6 +3654,13 @@ int dc_nots_warp_cams(float Nr[9], float er[3], float tr[3], float Nn[9], float 
 }
 
 int dc_nots_warp_turn(float *dcam, float *dher) {
+    if (g_dc_orig_mode) {
+        if (!s_wG.have || !s_wGp.have) return 0;
+        int h = (s_wG.yaw - s_wGp.yaw) & 4095; if (h > 2048) h -= 4096;
+        if (dcam) *dcam = 0.f;
+        if (dher) *dher = (float)h * (6.2831853f / 4096.0f);
+        return 1;
+    }
     if (!s_wD_have || !s_wDp_have) return 0;
     float c = s_wD_cam - s_wDp_cam;
     while (c >  3.14159265f) c -= 6.2831853f;
@@ -6667,7 +6819,9 @@ void dc_geomcam_probe(CPUState* cpu) {
                   s_nots_dphave=1;
                   memcpy(s_wDp_N, s_wD_N, sizeof s_wDp_N); memcpy(s_wDp_eye, s_wD_eye, sizeof s_wDp_eye);
                   memcpy(s_wDp_tgt, s_wD_tgt, sizeof s_wDp_tgt); s_wDp_have = s_wD_have; s_wDp_flip = s_wD_flip;
-                  s_wDp_cam = s_wD_cam; s_wDp_her = s_wD_her;                                                               } else { s_nots_dphave=0; s_wDp_have = 0; }
+                   s_wDp_cam = s_wD_cam; s_wDp_her = s_wD_her;
+                   s_wGp = s_wG;
+               } else { s_nots_dphave=0; s_wDp_have = 0; s_wGp.have = 0; }
           } }
         for(int i=0;i<9;i++) s_nots_D[i]=D[i];
         for(int i=0;i<3;i++) s_nots_T[i]=td[i];
@@ -6675,8 +6829,25 @@ void dc_geomcam_probe(CPUState* cpu) {
         s_nots_D_pass = g_dc_pass_id;
         { extern uint64_t gpu_flip_seq(void);
           memcpy(s_wD_N, s_dNp, sizeof s_wD_N); memcpy(s_wD_eye, s_deyev, sizeof s_wD_eye); memcpy(s_wD_tgt, s_dtgt, sizeof s_wD_tgt);
-          s_wD_have = 1; s_wD_flip = (unsigned long long)gpu_flip_seq();
-          s_wD_cam = s_nots_cam; s_wD_her = s_nots_her_yaw; }
+           s_wD_have = 1; s_wD_flip = (unsigned long long)gpu_flip_seq();
+           s_wD_cam = s_nots_cam; s_wD_her = s_nots_her_yaw; }
+        { extern uint64_t gpu_flip_seq(void);
+          static unsigned long long gpin = ~0ull;
+          const unsigned long long fl3 = (unsigned long long)gpu_flip_seq();
+          if (gpin != fl3) {
+              gpin = fl3;
+              { static int gd = -1;
+                if (gd < 0) { const char *e = getenv("DC_ORIG_WARP_DBG"); gd = (e && *e == '1') ? 1 : 0; }
+                if (gd && s_wG.have)
+                    fprintf(stderr, "origwarp: flip %llu yaw %d shot %04X cut %ld orig %d recomputes %d pass %d%c",
+                            s_wG.flip, s_wG.yaw, (unsigned)s_wG.shot, s_wG.cut, s_wG.orig, s_wG.n, s_nots_D_pass, 10); }
+              memcpy(s_wG.R, Pc, sizeof s_wG.R); memcpy(s_wG.eye, eyeg, sizeof s_wG.eye);
+              s_wG.her[0] = (float)(int16_t)(ram[0xB92C0] | (ram[0xB92C1] << 8));
+              s_wG.her[1] = (float)(int16_t)(ram[0xB92C2] | (ram[0xB92C3] << 8));
+              s_wG.her[2] = (float)(int16_t)(ram[0xB92B0] | (ram[0xB92B1] << 8));
+              s_wG.yaw = (int)yws; s_wG.shot = ram[0xB796C] | (ram[0xB796E] << 8); s_wG.cut = g_cut_event;
+              s_wG.orig = g_dc_orig_mode; s_wG.flip = fl3; s_wG.n = 1; s_wG.have = 1;
+          } else s_wG.n++; }
         camdbg_pair(D, td, "delta");
         { static int wdbg = -1;
           if (wdbg < 0) { const char *e = getenv("DC_CAMDBG"); wdbg = (e && *e == '1') ? 1 : 0; }

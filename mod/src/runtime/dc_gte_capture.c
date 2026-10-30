@@ -1,4 +1,5 @@
 #include "dc_gte_capture.h"
+#include "dc_projection_pairs.h"
 #include <limits.h>
 #include <string.h>
 #include <stdlib.h>
@@ -19,6 +20,7 @@ void dc_gte_capture_reset(void)
     memset(g_cam_T, 0, sizeof g_cam_T);
     s_epoch = 0; g_cam_have = 0;
     dc_gte_light_reset();
+    dc_pair_projection_reset();
 }
 
 int pt_current_matrix_epoch(void) { return s_epoch; }

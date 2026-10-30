@@ -14,6 +14,7 @@
 #include "test_process.h"
 
 extern "C" {
+int g_dc_pass_id;
 static unsigned latency_calls;
 uint32_t psx_gte_cmd_latency(uint32_t command) { return 7 + (command & 63); }
 void psx_gte_set(CPUState *cpu, uint32_t latency)

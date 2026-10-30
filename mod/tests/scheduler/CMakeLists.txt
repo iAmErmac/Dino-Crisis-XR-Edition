@@ -239,6 +239,18 @@ foreach(pose_target dc_pose_restore_test dc_pose_call_test)
     add_test(NAME ${pose_target} COMMAND ${pose_target})
 endforeach()
 
+add_executable(dc_projection_pairs_test projection_pairs_test.cpp ../../src/runtime/dc_projection_pairs.cpp)
+target_include_directories(dc_projection_pairs_test PRIVATE ../../src/include)
+target_compile_features(dc_projection_pairs_test PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(dc_projection_pairs_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(dc_projection_pairs_test PRIVATE -UNDEBUG)
+endif()
+add_test(NAME dc_projection_pairs_test COMMAND dc_projection_pairs_test)
+
+target_sources(dc_gte_pgxp_test PRIVATE ../../src/runtime/dc_projection_pairs.cpp)
+
 execute_process(COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/make_call_fixture.py"
     "${CMAKE_CURRENT_BINARY_DIR}/call_hook_fixture.c"

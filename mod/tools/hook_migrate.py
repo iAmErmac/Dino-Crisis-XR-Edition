@@ -492,8 +492,19 @@ def adapted_payload(payload: str) -> str:
     return payload.rstrip("\r\n") + "\n"
 
 
+def sequence_blood_payload(payload: str) -> bool:
+    code = CPP_COMMENT_RE.sub("", C_COMMENT_RE.sub("", payload))
+    compact = re.sub(r"\s+", "", code)
+    return compact == (
+        "{externvoiddc_seq_blood_place(uint32_t,uint32_t,uint32_t);"
+        "dc_seq_blood_place(g16,g17,g18);}"
+    )
+
+
 def operation_kind(payload: str) -> str:
     code = CPP_COMMENT_RE.sub("", C_COMMENT_RE.sub("", payload))
+    if sequence_blood_payload(payload):
+        return "sequence-blood-hook"
     if entry_gate(payload) is not None:
         return "entry-gate"
     if "gte_execute_pc" in payload:
@@ -837,6 +848,57 @@ def analyze_operation(
         result["disposition"] = "adapted"
         result["reason"] = "pure host prototypes added to the shared generated declarations header"
         return result, (path, line_count, line_count, declarations.splitlines(keepends=True))
+
+    if kind == "sequence-blood-hook":
+        previous, previous_mode = unique_site(
+            sources, function, edit.get("previous_instruction")
+        )
+        following, following_mode = unique_site(
+            sources, function, edit.get("next_instruction")
+        )
+        result["kind"] = kind
+        result["anchors"]["previous"] = site_dict(sources, previous, previous_mode)
+        result["anchors"]["next"] = site_dict(sources, following, following_mode)
+        if function != "80022310":
+            result["reason"] = "sequence blood hook is not in its exact effect-player function"
+            return result, None
+        if (previous is None or following is None or
+            previous.pc != "800223E4" or previous.opcode != "AE02006C" or
+            following.pc != "800223E8" or following.opcode != "8E420004"):
+            result["reason"] = "sequence blood hook lacks its exact 0x800223E4/0x800223E8 anchors"
+            return result, None
+        previous_span = sources.span_for(previous)
+        following_span = sources.span_for(following)
+        if (previous.path != following.path or previous.function != following.function or
+            following_span.full_start != previous_span.full_end):
+            result["reason"] = "sequence blood hook anchors are not one contiguous instruction boundary"
+            return result, None
+        lines = sources.lines[following.path]
+        fallthrough = [i for i in range(previous.line_index + 1, following.line_index)
+                       if lines[i].strip() == "/* fall through to block_800223E8 */"]
+        if len(fallthrough) != 1:
+            result["reason"] = "sequence blood hook lacks its exact fallthrough edge"
+            return result, None
+        # Direct branches to the shared block must skip this effect update.
+        boundary = fallthrough[0]
+        adapted = [
+            "    { extern void dc_seq_blood_place(uint32_t, uint32_t, uint32_t);\n",
+            "      dc_seq_blood_place(cpu->gpr[16], cpu->gpr[17], cpu->gpr[18]); }\n",
+        ]
+        result["boundary"] = {
+            "file": following.path.name,
+            "line_before": boundary + 1,
+            "line_after": boundary,
+            "previous": result["anchors"]["previous"],
+            "next": result["anchors"]["next"],
+        }
+        if _payload_at_boundary(lines, boundary, adapted):
+            result["disposition"] = "retained"
+            result["reason"] = "sequence blood hook is already present at the exact effect-player boundary"
+            return result, None
+        result["disposition"] = "adapted"
+        result["reason"] = "adapt the one sequence blood call at its exact guest boundary"
+        return result, (following.path, boundary, boundary, adapted)
 
     code = CPP_COMMENT_RE.sub("", C_COMMENT_RE.sub("", payload)).strip()
     branch_gate = re.fullmatch(

@@ -113,6 +113,8 @@ def prepare(framework, output, frontend_base=None):
         ("src/include/dc_gte_camera.h", "runtime/include/dc_gte_camera.h"),
         ("src/runtime/dc_gte_capture.c", "runtime/src/dc_gte_capture.c"),
         ("src/include/dc_gte_capture.h", "runtime/include/dc_gte_capture.h"),
+        ("src/runtime/dc_projection_pairs.cpp", "runtime/src/dc_projection_pairs.cpp"),
+        ("src/include/dc_projection_pairs.h", "runtime/include/dc_projection_pairs.h"),
         ("src/runtime/dc_projection_cache.c", "runtime/src/dc_projection_cache.c"),
         ("src/include/dc_projection_cache.h", "runtime/include/dc_projection_cache.h"),
         ("src/runtime/dc_dma_policy.c", "runtime/src/dc_dma_policy.c"),
@@ -188,6 +190,7 @@ def prepare(framework, output, frontend_base=None):
         "runtime/src/dc_memcard_snapshot.c", "runtime/include/dc_memcard_snapshot.h",
         "runtime/src/dc_gte_camera.c", "runtime/include/dc_gte_camera.h",
         "runtime/src/dc_gte_capture.c", "runtime/include/dc_gte_capture.h",
+        "runtime/src/dc_projection_pairs.cpp", "runtime/include/dc_projection_pairs.h",
         "runtime/src/dc_projection_cache.c", "runtime/include/dc_projection_cache.h",
         "runtime/src/dma.c", "runtime/include/dma.h", "runtime/src/dc_dma_policy.c", "runtime/include/dc_dma_policy.h",
         "runtime/src/debug_server.c", "runtime/src/fntrace.c", "runtime/include/fntrace.h", "runtime/src/psx_bios_backend.c", "runtime/src/dirty_ram_interp.c", "runtime/src/iso_reader.cpp", "runtime/src/cdrom.c", "runtime/include/cdrom.h", "runtime/src/boot_state.c", "runtime/include/boot_state.h",
@@ -281,6 +284,9 @@ def prepare(framework, output, frontend_base=None):
         reticle_present_patch = mod / "patches/dc-reticle-present.dcpatch"
         posdiff.apply(str(reticle_present_patch), str(output))
         patches.append(reticle_present_patch)
+        runtime_v106_patch = mod / "patches/dc-runtime-v106.dcpatch"
+        posdiff.apply(str(runtime_v106_patch), str(output))
+        patches.append(runtime_v106_patch)
 
     manifest = {
         "schema": 1,

@@ -459,6 +459,54 @@ void func_80020000(CPUState* cpu)
         self.assertEqual(result["disposition"], "retained")
         self.assertIsNone(changes)
 
+    def test_sequence_blood_hook_uses_exact_effect_player_boundary(self):
+        path = self.generated / "sample_full_00.c"
+        path.write_text("""void func_80022310(CPUState* cpu)
+{
+    pgxp_sw_v(cpu, g16 + 108, 2, g2);  /* 0x800223E4: 0xAE02006C */
+    /* fall through to block_800223E8 */
+block_800223E8:
+    g2 = pgxp_lw(cpu, g17 + 4, 2);  /* 0x800223E8: 0x8E420004 */
+}
+""", encoding="utf-8")
+        payload = """{ extern void dc_seq_blood_place(uint32_t, uint32_t, uint32_t);
+  dc_seq_blood_place(g16, g17, g18); }
+"""
+        edit = operation(
+            0,
+            "80022310",
+            payload,
+            previous=anchor("800223E4", "AE02006C"),
+            following=anchor("800223E8", "8E420004"),
+        )
+        old = decoded(0, "80022310", payload)
+        result, changes = hook_migrate.analyze_operation(
+            hook_migrate.GeneratedSources(self.generated), edit, old
+        )
+        self.assertEqual(result["kind"], "sequence-blood-hook")
+        self.assertEqual(result["disposition"], "adapted", result)
+        adapted = "".join(changes[3])
+        self.assertIn("dc_seq_blood_place(cpu->gpr[16], cpu->gpr[17], cpu->gpr[18])", adapted)
+
+        output = self.root / "sequence_blood"
+        hook_migrate.apply_changes(self.generated, output, [changes])
+        transformed = (output / "sample_full_00.c").read_text()
+        self.assertLess(transformed.index("dc_seq_blood_place(cpu->gpr"),
+                        transformed.index("block_800223E8:"))
+        retained, retained_changes = hook_migrate.analyze_operation(
+            hook_migrate.GeneratedSources(output), edit, old
+        )
+        self.assertEqual(retained["disposition"], "retained")
+        self.assertIsNone(retained_changes)
+
+        wrong = dict(edit)
+        wrong["previous_instruction"] = anchor("800223A4", "00000000")
+        rejected, rejected_changes = hook_migrate.analyze_operation(
+            hook_migrate.GeneratedSources(self.generated), wrong, old
+        )
+        self.assertEqual(rejected["disposition"], "unresolved")
+        self.assertIsNone(rejected_changes)
+
     def test_blood_transformed_shared_continuation_filters_direct_branches(self):
         compiler = shutil.which("cl")
         if compiler is None:

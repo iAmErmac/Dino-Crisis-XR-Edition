@@ -8,6 +8,7 @@ typedef struct DcGteCameraVertex {
     float x, y, depth;
     uint32_t sz;
     int active, rewrite_mac;
+    float delta_rotation[9], delta_translation[3];
 } DcGteCameraVertex;
 void dc_gte_camera_begin(int triple, const int16_t rotation[9], const int32_t translation[3]);
 void dc_gte_camera_end(int triple, const int16_t rotation[9], const int32_t translation[3]);

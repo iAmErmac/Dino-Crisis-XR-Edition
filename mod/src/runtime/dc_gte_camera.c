@@ -52,6 +52,8 @@ DcGteCameraVertex dc_gte_camera_view(int64_t x, int64_t y, int64_t z)
     DcGteCameraVertex result = {0}; float rotation[9], translation[3];
     dc_nots_rtps_tick();
     if (!dc_nots_get_delta(rotation, translation)) { s_active = 0; return result; }
+    memcpy(result.delta_rotation, rotation, sizeof rotation);
+    memcpy(result.delta_translation, translation, sizeof translation);
     double view[3] = {(double)x / 4096.0, (double)y / 4096.0, (double)z / 4096.0};
     float projected[3];
     for (unsigned r = 0; r < 3; ++r) {
